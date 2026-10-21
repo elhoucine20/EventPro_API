@@ -2,8 +2,7 @@ package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.TypeReduction;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,6 +15,9 @@ import java.util.UUID;
 @Table(name = "promotions")
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Promotion {
 
     @Id
@@ -39,11 +41,13 @@ public class Promotion {
     private LocalDate dateFin ;
 
     @Column(nullable = false)
-    private LocalDateTime limiteUtilisation ;
+    private Integer maxUtilisations ;
 
     @Column(nullable = false)
+    @Builder.Default
     private Integer nombreUtilisations = 0;
 
     @OneToMany(mappedBy = "promotion")
+    @Builder.Default
     private List<Event> events = new ArrayList<>();
 }

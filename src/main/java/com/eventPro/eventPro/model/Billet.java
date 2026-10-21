@@ -2,8 +2,7 @@ package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.StatutBillet;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,6 +12,9 @@ import java.util.UUID;
 @Table(name = "billets")
 @Getter
 @Setter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class Billet {
 
     @Id

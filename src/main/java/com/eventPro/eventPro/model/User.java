@@ -2,9 +2,10 @@ package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.RoleUser;
 import jakarta.persistence.*;
-import lombok.Data;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
 import java.util.UUID;
 
@@ -12,6 +13,8 @@ import java.util.UUID;
 @Inheritance(strategy = InheritanceType.JOINED)
 @Getter
 @Setter
+@SuperBuilder
+@NoArgsConstructor
 @Table(name = "users")
 public class User {
 

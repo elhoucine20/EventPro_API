@@ -2,8 +2,7 @@ package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.StatutReservation;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,6 +15,9 @@ import java.util.UUID;
 @Table(name = "reservations")
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Reservation {
 
     @Id
@@ -59,5 +61,6 @@ public class Reservation {
 
     // ligne reservation
     @OneToMany(mappedBy = "reservation",cascade = CascadeType.ALL,orphanRemoval = true)
+    @Builder.Default
     private List<LigneReservation> lignes = new ArrayList<>();
 }

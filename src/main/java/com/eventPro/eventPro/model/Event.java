@@ -2,8 +2,7 @@ package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.StatusEvenment;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -14,6 +13,9 @@ import java.util.UUID;
 @Table(name = "events")
 @Getter
 @Setter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class Event{
 
     @Id
@@ -52,6 +54,7 @@ public class Event{
 
     // categorieBillet
     @OneToMany(mappedBy = "event",cascade = CascadeType.ALL,orphanRemoval = true)
+    @Builder.Default
     private List<CategorieBillet> categoriesBillet = new ArrayList<>();
 
 
