@@ -46,4 +46,16 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(LocalDateTime.now(), status.value(), message, errors));
     }
 
+
+    // commence a event
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException exception){
+        return build(HttpStatus.BAD_REQUEST,exception.getMessage(),null);
+    }
+
+    @ExceptionHandler(ForbiddenOperationException.class)
+    public ResponseEntity<ErrorResponse> handleForBidden(ForbiddenOperationException exception){
+        return build(HttpStatus.FORBIDDEN,exception.getMessage(),null);
+    }
+
 }

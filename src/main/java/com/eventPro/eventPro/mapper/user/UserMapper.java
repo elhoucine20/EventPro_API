@@ -23,7 +23,7 @@ public interface UserMapper {
     @Mapping(target = "events", ignore = true)
     Organisateur toOrganisateur(RegisterOrganisateurRequest req, String hashPassword, String salt);
 
-    Organisateur toOrganisateur(RegisterClientRequest request, String hashPassword, String salt);
+    //Organisateur toOrganisateur(RegisterClientRequest request, String hashPassword, String salt);
 
     UserResponse toResponse(User user);
 }

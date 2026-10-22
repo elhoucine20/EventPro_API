@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,16 +33,16 @@ public class Event{
     private String lieu ;
 
     @Column(nullable = false)
-    private LocalDate dateDebut;
+    private LocalDateTime dateDebut;
 
     @Column(nullable = false)
-    private LocalDate dateFin;
+    private LocalDateTime dateFin;
 
     @Column(nullable = false)
-    private LocalDate dateOuvertureVente;
+    private LocalDateTime dateOuvertureVente;
 
     @Column(nullable = false)
-    private LocalDate dateClotureVente;
+    private LocalDateTime dateClotureVente;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
