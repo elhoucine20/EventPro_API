@@ -9,6 +9,7 @@ import com.eventPro.eventPro.mapper.event.EventMapper;
 import com.eventPro.eventPro.model.Event;
 import com.eventPro.eventPro.model.Organisateur;
 import com.eventPro.eventPro.model.enums.StatusEvenment;
+import com.eventPro.eventPro.repository.CategorieBilletRepository;
 import com.eventPro.eventPro.repository.EventRepository;
 import com.eventPro.eventPro.repository.OrganisateurRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final OrganisateurRepository organisateurRepository;
     private final EventMapper eventMapper;
+    private final CategorieBilletRepository categorieBilletRepository;
 
     @Transactional
     public EventResponse create(EventRequest request){
@@ -58,9 +60,15 @@ public class EventService {
     public EventResponse publier(UUID id, UUID organisateurId) {
         Event event = findEvent(id);
         checkOwner(event, organisateurId);
+
         if (event.getStatut() != StatusEvenment.DRAFT) {
             throw new BusinessRuleException("Seul un evenement en draft peut etre publie");
         }
+        // existing by category
+        if (!categorieBilletRepository.existsByEventId(id)){
+            throw new BusinessRuleException("l'evenment doit avoir au moins une categorie de billet");
+        }
+
         event.setStatut(StatusEvenment.PUBLISHED);
         return eventMapper.toResponse(event);
     }

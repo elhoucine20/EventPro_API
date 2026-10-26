@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "categorieBillets")
+@Table(name = "categories_billet")
 @Getter
 @Setter
 @Builder
