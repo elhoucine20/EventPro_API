@@ -1,6 +1,7 @@
 package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.TypeReduction;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -12,7 +13,9 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "promotions")
+//@Table(name = "promotions")
+// unique sur event_id et code //if promotion deha exist dans
+@Table(name = "promotions",uniqueConstraints = @UniqueConstraint(columnNames = {"event_id", "code"}))
 @Getter
 @Setter
 @Builder
@@ -24,7 +27,7 @@ public class Promotion {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(unique = true,nullable = false)
+    @Column(nullable = false)
     private String code;
 
     @Column(nullable = false)
@@ -35,6 +38,7 @@ public class Promotion {
     private BigDecimal valeurReduction;
 
     @Column(nullable = false)
+    //@JsonFormat(shape = JsonFormat.Shape.STRING,pattern = "dd-MM-yyyy")
     private LocalDate dateDebut;
 
     @Column(nullable = false)
@@ -47,7 +51,11 @@ public class Promotion {
     @Builder.Default
     private Integer nombreUtilisations = 0;
 
-    @OneToMany(mappedBy = "promotion")
-    @Builder.Default
-    private List<Event> events = new ArrayList<>();
+   // @OneToMany(mappedBy = "promotion")
+    //@Builder.Default
+    //private List<Event> events = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY,optional = false)
+    @JoinColumn(name = "event_id",nullable = false)
+    private Event event;
 }

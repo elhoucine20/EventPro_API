@@ -16,7 +16,7 @@ public interface EventMapper {
     @Mapping(target = "statut",ignore = true)
     @Mapping(target = "organisateur",ignore = true)
     @Mapping(target = "categoriesBillet",ignore = true)
-    @Mapping(target = "promotion", ignore = true)
+    @Mapping(target = "promotions", ignore = true)
     Event toEntity(EventRequest request);
 
 
@@ -29,7 +29,7 @@ public interface EventMapper {
     @Mapping(target = "statut", ignore = true)
     @Mapping(target = "organisateur", ignore = true)
     @Mapping(target = "categoriesBillet", ignore = true)
-    @Mapping(target = "promotion", ignore = true)
+    @Mapping(target = "promotions", ignore = true)
     void updateEntity(EventRequest request, @MappingTarget Event event); // indique a spring de update cette objet
 
 }

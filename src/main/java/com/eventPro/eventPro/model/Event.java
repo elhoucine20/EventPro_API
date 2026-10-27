@@ -56,13 +56,16 @@ public class Event{
     // categorieBillet
     @OneToMany(mappedBy = "event",cascade = CascadeType.ALL,orphanRemoval = true)
     @Builder.Default
-    private List<CategorieBillet> categoriesBillet = new ArrayList<>();
+    private List<CategorieBillet> categoriesBillet = new ArrayList<>();//
 
 
     //promotion
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "promotion_id")
-    private Promotion promotion;
+    //@ManyToOne(fetch = FetchType.LAZY)
+    //@JoinColumn(name = "promotion_id")
+    //private Promotion promotion;
+    @OneToMany(mappedBy = "event")
+    @Builder.Default
+    private List<Promotion> promotions = new ArrayList<>();
 
 
 
