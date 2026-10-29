@@ -4,6 +4,7 @@ import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
 import com.eventPro.eventPro.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,17 +22,20 @@ public class UserController {
 
     @PostMapping("/auth/register/client")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Register de client")
     public UserResponse registerClient( @Valid @RequestBody RegisterClientRequest request){
         return userService.registerClient(request);
     }
 
     @PostMapping("/auth/register/organisateur")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Register de organisateur")
     public UserResponse registerOrganisateur(@Valid @RequestBody RegisterOrganisateurRequest request){
         return userService.registerOrganisateur(request);
     }
 
     @GetMapping("/users/{id}")
+    @Operation(summary = "Lister by id")
     public UserResponse getById(@PathVariable UUID id){
         return userService.getById(id);
     }

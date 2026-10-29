@@ -1,5 +1,7 @@
 package com.eventPro.eventPro.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,9 +37,15 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST,"les donnees invalide",errors);
     }
 
+
+    // log
+    //private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     // quand 2 inscriptions simultanees avec la meme email
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleIntegrity(DataIntegrityViolationException exception){
+       // log.error("Erreur d'intégrité de la base de données", exception);
+
         return build(HttpStatus.CONFLICT,"conflit avec les donnees existantes",null);
     }
 

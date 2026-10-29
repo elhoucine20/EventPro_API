@@ -1,15 +1,13 @@
 package com.eventPro.eventPro.model;
 
 import com.eventPro.eventPro.model.enums.TypeReduction;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+
 import java.util.UUID;
 
 @Entity
@@ -58,4 +56,22 @@ public class Promotion {
     @ManyToOne(fetch = FetchType.LAZY,optional = false)
     @JoinColumn(name = "event_id",nullable = false)
     private Event event;
+
+
+    public boolean estValid(){
+        LocalDate today = LocalDate.now();
+
+        // est-ce que la promo est rest valide
+        return (   !today.isBefore(dateDebut) &&
+                   !today.isAfter(dateFin) &&
+                   nombreUtilisations < maxUtilisations
+        );
+    }
+
+    public BigDecimal calculerReduction(BigDecimal montant){
+        BigDecimal reduction = (typeReduction == TypeReduction.PERCENTAGE) ?
+                montant.multiply(valeurReduction).divide(BigDecimal.valueOf(100),2, RoundingMode.HALF_UP) : valeurReduction;
+
+        return reduction.min(montant);
+    }
 }

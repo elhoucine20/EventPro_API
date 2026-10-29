@@ -7,4 +7,5 @@ import java.util.UUID;
 
 public interface OrganisateurRepository extends JpaRepository<Organisateur, UUID> {
 
+    // pour recuperer just les clients
 }
