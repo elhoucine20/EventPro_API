@@ -4,7 +4,6 @@ import com.eventPro.eventPro.model.enums.StatutBillet;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 

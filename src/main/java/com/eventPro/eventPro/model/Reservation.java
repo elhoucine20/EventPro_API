@@ -5,7 +5,6 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,10 +53,6 @@ public class Reservation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promotion_id")
     private Promotion promotion;
-
-    // paiment
-    @OneToOne(mappedBy = "reservation")
-    private Paiement paiement;
 
     // ligne reservation
     @OneToMany(mappedBy = "reservation",cascade = CascadeType.ALL,orphanRemoval = true)
