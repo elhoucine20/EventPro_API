@@ -37,4 +37,9 @@ public class Billet {
     @JoinColumn(name = "ligne_reservation_id", nullable = false)
     private LigneReservation ligneReservation;
 
+
+    // categorieBillet
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "categorie_billet_id", nullable = false)
+    private CategorieBillet categorieBillet;
 }

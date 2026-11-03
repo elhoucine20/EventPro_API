@@ -66,4 +66,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN,exception.getMessage(),null);
     }
 
+    // reservation expired
+    @ExceptionHandler(ReservationExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleReservationExpired(ReservationExpiredException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ErrorResponse> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
 }

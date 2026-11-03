@@ -2,9 +2,7 @@ package com.eventPro.eventPro.service;
 
 import com.eventPro.eventPro.dto.paiement.PaiementRequest;
 import com.eventPro.eventPro.dto.paiement.PaiementResponse;
-import com.eventPro.eventPro.exception.BusinessRuleException;
-import com.eventPro.eventPro.exception.ForbiddenOperationException;
-import com.eventPro.eventPro.exception.ResourceNotFoundException;
+import com.eventPro.eventPro.exception.*;
 import com.eventPro.eventPro.mapper.paiement.PaiementMapper;
 import com.eventPro.eventPro.model.Billet;
 import com.eventPro.eventPro.model.LigneReservation;
@@ -22,9 +20,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -44,14 +44,22 @@ public class PaiementService {
         Reservation reservation = reservationRepository.findByIdForUpdate(reservationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation introuvable : " + reservationId));
 
+        // NOUVEAU : idempotence
+        Optional<Paiement> deja = paiementRepository.findByIdempotencyKey(request.idempotencyKey());
+        if (deja.isPresent()) {
+            return replay(deja.get(), reservationId, request.montant());
+        }
+
         checkOwner(reservation, request.clientId());
         checkPayable(reservation, now);
+        checkMontant(reservation, request.montant());                 // NOUVEAU
 
         Paiement paiement = paiementRepository.findByReservationId(reservationId)
                 .orElseGet(() -> Paiement.builder().reservation(reservation).build()); // orElseGet ??
         paiement.setReference(generateReference());
         paiement.setMontant(reservation.getMontantTotal());
         paiement.setDatePaiement(now);
+        paiement.setIdempotencyKey(request.idempotencyKey());         // NOUVEAU
 
         boolean simulerEchec = Boolean.TRUE.equals(request.simulerEchec());
         PaymentResult result = paymentGateway.charge(paiement.getMontant(), paiement.getReference(), simulerEchec);
@@ -93,7 +101,7 @@ public class PaiementService {
                     "Cette reservation ne peut pas etre payee (statut : " + reservation.getStatut() + ")");
         }
         if (reservation.getDateExpiration().isBefore(now)) {
-            throw new BusinessRuleException("La reservation a expire");
+            throw new ReservationExpiredException("La reservation a expire");
         }
     }
 
@@ -114,6 +122,7 @@ public class PaiementService {
                         .dateEmission(now)
                         .statut(StatutBillet.VALID)
                         .ligneReservation(ligne)
+                        .categorieBillet(ligne.getCategorieBillet())
                         .build());
             }
         }
@@ -124,4 +133,22 @@ public class PaiementService {
         return "BIL-" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
     }
 
+
+
+    private PaiementResponse replay(Paiement existant, UUID reservationId, BigDecimal montant) {
+        boolean memePanier = existant.getReservation().getId().equals(reservationId)
+                && existant.getMontant().compareTo(montant) == 0;
+        if (!memePanier) {
+            throw new IdempotencyConflictException(
+                    "Cette cle d'idempotence a deja ete utilisee avec une autre reservation ou un autre montant");
+        }
+        return paiementMapper.toResponse(existant);
+    }
+
+    private void checkMontant(Reservation reservation, BigDecimal montant) {
+        if (reservation.getMontantTotal().compareTo(montant) != 0) {
+            throw new BusinessRuleException("Le montant ne correspond pas au total de la réservation (attendu : "
+                    + reservation.getMontantTotal() + ")");
+        }
+    }
 }

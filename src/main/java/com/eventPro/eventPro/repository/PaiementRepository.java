@@ -12,4 +12,6 @@ public interface PaiementRepository extends JpaRepository<Paiement,UUID> {
 
     Optional<Paiement> findByReservationId(UUID reservationId); // optionel car possible expire reservation
     boolean existsByReference(String reference); // est-ce que reference deja exist
+
+    Optional<Paiement> findByIdempotencyKey(String idempotencyKey);
 }

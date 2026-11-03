@@ -34,6 +34,9 @@ public class Paiement {
     @Enumerated(EnumType.STRING)
     private StatutPaiement statut;
 
+    @Column(unique = true, length = 100)
+    private String idempotencyKey; //
+
     @OneToOne(fetch = FetchType.LAZY,optional = false)
     @JoinColumn(name = "reservation_id",nullable = false,unique = true)
     private Reservation reservation;
