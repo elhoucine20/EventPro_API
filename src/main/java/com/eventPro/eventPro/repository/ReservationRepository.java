@@ -11,6 +11,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,4 +27,14 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)  // ????
     @Query("select r from Reservation r where r.id = :id ")
     Optional<Reservation> findByIdForUpdate(@Param("id") UUID id);
+
+
+    // les reservatioon que doit changer statu vers EXPIRED
+    @Query("""
+        select r.id from Reservation r
+        where r.statut = com.eventPro.eventPro.model.enums.StatutReservation.PENDING_PAYMENT
+          and r.dateExpiration < :now
+        order by r.dateExpiration
+        """)
+    List<UUID> findExpiredIds(@Param("now") LocalDateTime now, Pageable pageable);
 }

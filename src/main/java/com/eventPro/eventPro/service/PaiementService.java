@@ -8,6 +8,7 @@ import com.eventPro.eventPro.model.Billet;
 import com.eventPro.eventPro.model.LigneReservation;
 import com.eventPro.eventPro.model.Paiement;
 import com.eventPro.eventPro.model.Reservation;
+import com.eventPro.eventPro.model.enums.RoleUser;
 import com.eventPro.eventPro.model.enums.StatutBillet;
 import com.eventPro.eventPro.model.enums.StatutPaiement;
 import com.eventPro.eventPro.model.enums.StatutReservation;
@@ -96,10 +97,17 @@ public class PaiementService {
     }
 
     private void checkPayable(Reservation reservation, LocalDateTime now) {
+
+        if (reservation.getStatut() == StatutReservation.EXPIRED) {
+            throw new ReservationExpiredException("La réservation a expiré");
+        }
+
         if (reservation.getStatut() != StatutReservation.PENDING_PAYMENT) {
             throw new BusinessRuleException(
                     "Cette reservation ne peut pas etre payee (statut : " + reservation.getStatut() + ")");
+
         }
+
         if (reservation.getDateExpiration().isBefore(now)) {
             throw new ReservationExpiredException("La reservation a expire");
         }

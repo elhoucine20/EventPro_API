@@ -127,6 +127,24 @@ public class ReservationService {
         return reservationMapper.toResponse(reservation);
     }
 
+    // expired
+    @Transactional
+    public boolean expirer(UUID id) {
+        Reservation reservation = reservationRepository.findByIdForUpdate(id).orElse(null);
+        if (reservation == null) {
+            return false;
+        }
+        // deja payee, annulee, ou pas encore expiree
+        if (reservation.getStatut() != StatutReservation.PENDING_PAYMENT
+                || !reservation.getDateExpiration().isBefore(LocalDateTime.now())) {
+            return false;
+        }
+        reservation.setStatut(StatutReservation.EXPIRED);
+        if (reservation.getPromotion() != null) {
+            promotionRepository.devrementUtilisation(reservation.getPromotion().getId());
+        }
+        return true;
+    }
 
     // heapers
     private Client findClient(UUID id){
