@@ -9,4 +9,7 @@ public interface PaymentGateway {  // inteface => service indique  charge paiemn
 
     // simulateFailure : utilise uniquement par FakePaymentGateway, ignore par un vrai fournisseur
     PaymentResult charge(BigDecimal montant,String reference,boolean simulateFailure);
+
+
+    PaymentResult refund(BigDecimal montant, String referencePaiement);//////
 }

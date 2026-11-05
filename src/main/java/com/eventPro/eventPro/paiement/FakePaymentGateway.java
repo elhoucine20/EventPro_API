@@ -16,4 +16,10 @@ public class FakePaymentGateway implements PaymentGateway{
         }
         return new PaymentResult(true, "Paiement accepte (simulation)");
     }
+
+
+    @Override
+    public PaymentResult refund(BigDecimal montant, String referencePaiement) {
+        return new PaymentResult(true, "Remboursement accepté (simulation)");
+    }
 }

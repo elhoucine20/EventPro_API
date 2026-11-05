@@ -34,8 +34,28 @@ public class Remboursement{
     @Enumerated(EnumType.STRING)
     private StatutRemboursement statut ;
 
+    @Column(length = 255)
+    private String decision; // ??
+
     // paiment
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "paiement_id", nullable = false)
     private Paiement paiement;
+
+
+
+
+    public void approuver() { /////
+        if (statut == StatutRemboursement.APPROVED) {
+            throw new IllegalStateException("Ce remboursement est déjà approuvé");
+        }
+        statut = StatutRemboursement.APPROVED;
+    }
+
+    public void refuser() {   /////:
+        if (statut == StatutRemboursement.APPROVED) {
+            throw new IllegalStateException("Un remboursement approuvé ne peut pas être refusé");
+        }
+        statut = StatutRemboursement.REJECTED;
+    }
 }
