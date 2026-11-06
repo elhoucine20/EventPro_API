@@ -8,10 +8,7 @@ import com.eventPro.eventPro.model.Billet;
 import com.eventPro.eventPro.model.LigneReservation;
 import com.eventPro.eventPro.model.Paiement;
 import com.eventPro.eventPro.model.Reservation;
-import com.eventPro.eventPro.model.enums.RoleUser;
-import com.eventPro.eventPro.model.enums.StatutBillet;
-import com.eventPro.eventPro.model.enums.StatutPaiement;
-import com.eventPro.eventPro.model.enums.StatutReservation;
+import com.eventPro.eventPro.model.enums.*;
 import com.eventPro.eventPro.paiement.PaymentGateway;
 import com.eventPro.eventPro.paiement.PaymentResult;
 import com.eventPro.eventPro.repository.BilletRepository;
@@ -106,6 +103,10 @@ public class PaiementService {
             throw new BusinessRuleException(
                     "Cette reservation ne peut pas etre payee (statut : " + reservation.getStatut() + ")");
 
+        }
+
+        if (reservation.getEvent().getStatut() == StatusEvenment.CANCELLED) {
+            throw new BusinessRuleException("L'evenement a ete annule : le paiement n'est plus possible");
         }
 
         if (reservation.getDateExpiration().isBefore(now)) {

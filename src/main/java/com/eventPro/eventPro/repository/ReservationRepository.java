@@ -1,6 +1,7 @@
 package com.eventPro.eventPro.repository;
 
 import com.eventPro.eventPro.model.Reservation;
+import com.eventPro.eventPro.model.enums.StatutReservation;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,4 +38,14 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
         order by r.dateExpiration
         """)
     List<UUID> findExpiredIds(@Param("now") LocalDateTime now, Pageable pageable);
+
+
+
+    @Query("""
+        select r.id from Reservation r
+        where r.event.statut = com.eventPro.eventPro.model.enums.StatusEvenment.CANCELLED
+          and r.statut = :statut
+        order by r.dateCreation
+        """)
+    List<UUID> findIdsByEventAnnuleEtStatut(@Param("statut") StatutReservation statut, Pageable pageable);
 }

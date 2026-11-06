@@ -1,12 +1,16 @@
 package com.eventPro.eventPro.mapper.user;
 
+import com.eventPro.eventPro.dto.agent.RegisterAgentRequest;
 import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
+import com.eventPro.eventPro.model.AgentControle;
 import com.eventPro.eventPro.model.Client;
 import com.eventPro.eventPro.model.Organisateur;
 import com.eventPro.eventPro.model.User;
 import com.eventPro.eventPro.model.enums.RoleUser;
+import org.aspectj.weaver.loadtime.Agent;
+import org.mapstruct.Mapping;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -25,6 +29,18 @@ public class UserMapperrr {
                 .phone(request.phone())
                 .build();
     }
+
+
+    public AgentControle toAgent(RegisterAgentRequest request,String hashPassword,String salt){
+        return AgentControle.builder()
+                .name(request.name())
+                .email(request.email())
+                .password(hashPassword)
+                .salt(salt)
+                .role(RoleUser.AGENT_CONTROLE)
+                .build();
+    }
+
 
     public Organisateur toOrganisateur(RegisterOrganisateurRequest request,String hashPassword,String salt){
         return Organisateur.builder()

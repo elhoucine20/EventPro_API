@@ -146,6 +146,23 @@ public class ReservationService {
         return true;
     }
 
+    //
+    @Transactional
+    public boolean annulerPourEvenementAnnule(UUID id) {
+        Reservation reservation = reservationRepository.findByIdForUpdate(id).orElse(null);
+        if (reservation == null
+                || reservation.getStatut() != StatutReservation.PENDING_PAYMENT
+                || reservation.getEvent().getStatut() != StatusEvenment.CANCELLED) {
+            return false;
+        }
+        reservation.setStatut(StatutReservation.CANCELLED);
+        if (reservation.getPromotion() != null) {
+            promotionRepository.devrementUtilisation(reservation.getPromotion().getId());
+        }
+        return true;
+    }
+
+
     // heapers
     private Client findClient(UUID id){
         return clientRepository.findById(id).orElseThrow(()-> new ResourceNotFoundException("Client introuvable : " + id));

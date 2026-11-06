@@ -76,4 +76,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIdempotencyConflict(IdempotencyConflictException ex) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), null);
     }
+
+
+
+    // for agent tivket
+    @ExceptionHandler(TicketAlreadyUsedException.class)
+    public ResponseEntity<ErrorResponse> handleTicketAlreadyUsed(TicketAlreadyUsedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(TicketInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleTicketInvalid(TicketInvalidException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
 }

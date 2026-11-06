@@ -16,7 +16,7 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor
 @Table(name = "users")
-public class User {
+public abstract class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

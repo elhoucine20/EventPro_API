@@ -99,6 +99,37 @@ public class RemboursementService {
     }
 
 
+
+    @Transactional
+    public boolean rembourserAutomatiquement(UUID reservationId) {
+        Reservation reservation = reservationRepository.findByIdForUpdate(reservationId).orElse(null);
+        if (reservation == null
+                || reservation.getStatut() != StatutReservation.CONFIRMED
+                || reservation.getEvent().getStatut() != StatusEvenment.CANCELLED) {
+            return false;
+        }
+
+        Paiement paiement = paiementRepository.findByReservationId(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Aucun paiement pour cette réservation"));
+        List<Billet> billets = billetRepository.findByLigneReservationReservationId(reservationId);
+
+        Remboursement remboursement = Remboursement.builder()
+                .paiement(paiement)
+                .motif("Annulation de l'événement par l'organisateur")
+                .dateDemande(LocalDateTime.now())
+                .montant(paiement.getMontant())
+                .decision("Remboursement intégral automatique (annulation de l'événement)")
+                .statut(StatutRemboursement.PENDING)
+                .build();
+
+        executerRemboursement(reservation, paiement, remboursement, billets);
+        remboursementRepository.save(remboursement);
+        return true;
+    }
+
+
+    // heapers
+
     private void checkOwner(Reservation reservation, UUID clientId) {
         if (!reservation.getClient().getId().equals(clientId)) {
             throw new ForbiddenOperationException("Cette réservation ne vous appartient pas");

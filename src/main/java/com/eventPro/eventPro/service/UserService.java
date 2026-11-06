@@ -1,5 +1,6 @@
 package com.eventPro.eventPro.service;
 
+import com.eventPro.eventPro.dto.agent.RegisterAgentRequest;
 import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
@@ -38,6 +39,16 @@ public class UserService {
         String salt = passwordUtils.generateSalt();
         String hashPassword = passwordUtils.hashPassword(request.password(),salt);
         User saved = userRepository.save(userMapper.toOrganisateur(request,hashPassword,salt));
+        return userMapper.toResponse(saved);
+    }
+
+    // agent
+    @Transactional
+    public UserResponse registerAgent(RegisterAgentRequest req) {
+        checkEmailAvailable(req.email());
+        String salt = passwordUtils.generateSalt();
+        String hash = passwordUtils.hashPassword(req.password(), salt);
+        User saved = userRepository.save(userMapper.toAgent(req, hash, salt));
         return userMapper.toResponse(saved);
     }
 

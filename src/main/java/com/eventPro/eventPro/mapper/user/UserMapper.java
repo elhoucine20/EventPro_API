@@ -1,7 +1,9 @@
 package com.eventPro.eventPro.mapper.user;
+import com.eventPro.eventPro.dto.agent.RegisterAgentRequest;
 import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
+import com.eventPro.eventPro.model.AgentControle;
 import com.eventPro.eventPro.model.Client;
 import com.eventPro.eventPro.model.Organisateur;
 import com.eventPro.eventPro.model.User;
@@ -24,6 +26,11 @@ public interface UserMapper {
     Organisateur toOrganisateur(RegisterOrganisateurRequest req, String hashPassword, String salt);
 
     //Organisateur toOrganisateur(RegisterClientRequest request, String hashPassword, String salt);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "password", source = "hashedPassword")
+    @Mapping(target = "role", constant = "AGENT_CONTROLE")
+    AgentControle toAgent(RegisterAgentRequest req, String hashedPassword, String salt);
 
     UserResponse toResponse(User user);
 }
