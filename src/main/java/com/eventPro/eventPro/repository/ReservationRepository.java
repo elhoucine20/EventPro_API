@@ -2,23 +2,23 @@ package com.eventPro.eventPro.repository;
 
 import com.eventPro.eventPro.model.Reservation;
 import com.eventPro.eventPro.model.enums.StatutReservation;
+import com.eventPro.eventPro.repository.projection.CleQuantiteMontant;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface ReservationRepository extends JpaRepository<Reservation, UUID> {
+public interface ReservationRepository extends JpaRepository<Reservation, UUID>, JpaSpecificationExecutor<Reservation> {
 
     @EntityGraph(attributePaths = "event")
     Page<Reservation> findByClientId(UUID clientId, Pageable pageable);
@@ -48,4 +48,24 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
         order by r.dateCreation
         """)
     List<UUID> findIdsByEventAnnuleEtStatut(@Param("statut") StatutReservation statut, Pageable pageable);
+
+
+
+    // for filter admin
+    @Override
+    @EntityGraph(attributePaths = {"event", "client", "promotion"})
+    Page<Reservation> findAll(Specification<Reservation> spec, Pageable pageable);
+
+
+
+    // for stats
+    @Query("""
+        select new com.eventPro.eventPro.repository.projection.CleQuantiteMontant(r.event.id, count(r), sum(r.montantTotal))
+        from Reservation r
+        where r.event.id in :eventIds
+          and r.statut = com.eventPro.eventPro.model.enums.StatutReservation.CONFIRMED
+        group by r.event.id
+        """)
+    List<CleQuantiteMontant> statsVentesParEvent(@Param("eventIds") Collection<UUID> eventIds);
+
 }

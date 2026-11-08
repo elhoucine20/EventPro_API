@@ -1,5 +1,6 @@
 package com.eventPro.eventPro.controller;
 
+import com.eventPro.eventPro.dto.admin.RegisterAdminRequest;
 import com.eventPro.eventPro.dto.agent.RegisterAgentRequest;
 import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
@@ -33,6 +34,13 @@ public class UserController {
     @Operation(summary = "Register de organisateur")
     public UserResponse registerOrganisateur(@Valid @RequestBody RegisterOrganisateurRequest request){
         return userService.registerOrganisateur(request);
+    }
+
+    // admin
+    @PostMapping("/auth/register/admin")
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserResponse registerAdmin(@Valid @RequestBody RegisterAdminRequest request) {
+        return userService.registerAdmin(request);
     }
 
     // agent

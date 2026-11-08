@@ -88,6 +88,7 @@ public class RemboursementService {
 
         return remboursementMapper.toResponse(remboursementRepository.save(remboursement));
     }
+
     @Transactional(readOnly = true)
     public List<RemboursementResponse> getByReservation(UUID reservationId, UUID clientId) {
         Reservation reservation = reservationRepository.findById(reservationId)
@@ -97,8 +98,6 @@ public class RemboursementService {
                 .map(remboursementMapper::toResponse)
                 .toList();
     }
-
-
 
     @Transactional
     public boolean rembourserAutomatiquement(UUID reservationId) {
@@ -128,8 +127,36 @@ public class RemboursementService {
     }
 
 
-    // heapers
 
+    // admin peut etre accepter une roumbercement sans dependes sur la condition de 48h
+    @Transactional
+    public RemboursementResponse approuverExceptionnellement(UUID remboursementId) {
+        Remboursement remboursement = remboursementRepository.findById(remboursementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Remboursement introuvable : " + remboursementId));
+        if (remboursement.getStatut() != StatutRemboursement.REJECTED) {
+            throw new BusinessRuleException(
+                    "Seul un remboursement refuséepeut être approuvé exceptionnellement (statut : "
+                            + remboursement.getStatut() + ")");
+        }
+
+        Paiement paiement = remboursement.getPaiement();
+        UUID reservationId = paiement.getReservation().getId();
+        Reservation reservation = reservationRepository.findByIdForUpdate(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Réservation introuvable : " + reservationId));
+        if (reservation.getStatut() != StatutReservation.CONFIRMED) {
+            throw new BusinessRuleException(
+                    "La réservation n'est plus remboursable (statut : " + reservation.getStatut() + ")");
+        }
+
+        List<Billet> billets = billetRepository.findByLigneReservationReservationId(reservationId);
+        remboursement.setMontant(paiement.getMontant());
+        remboursement.setDecision("Approuvé exceptionnellement par l'administrateur");
+        executerRemboursement(reservation, paiement, remboursement, billets);
+
+        return remboursementMapper.toResponse(remboursement);
+    }
+
+    // heapers
     private void checkOwner(Reservation reservation, UUID clientId) {
         if (!reservation.getClient().getId().equals(clientId)) {
             throw new ForbiddenOperationException("Cette réservation ne vous appartient pas");

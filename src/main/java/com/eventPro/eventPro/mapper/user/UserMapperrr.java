@@ -1,13 +1,11 @@
 package com.eventPro.eventPro.mapper.user;
 
+import com.eventPro.eventPro.dto.admin.RegisterAdminRequest;
 import com.eventPro.eventPro.dto.agent.RegisterAgentRequest;
 import com.eventPro.eventPro.dto.user.RegisterClientRequest;
 import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
-import com.eventPro.eventPro.model.AgentControle;
-import com.eventPro.eventPro.model.Client;
-import com.eventPro.eventPro.model.Organisateur;
-import com.eventPro.eventPro.model.User;
+import com.eventPro.eventPro.model.*;
 import com.eventPro.eventPro.model.enums.RoleUser;
 import org.aspectj.weaver.loadtime.Agent;
 import org.mapstruct.Mapping;
@@ -38,6 +36,17 @@ public class UserMapperrr {
                 .password(hashPassword)
                 .salt(salt)
                 .role(RoleUser.AGENT_CONTROLE)
+                .build();
+    }
+
+
+    public Administrateur toAdmin(RegisterAdminRequest request, String hashPassword, String salt){
+        return Administrateur.builder()
+                .name(request.name())
+                .email(request.email())
+                .password(hashPassword)
+                .salt(salt)
+                .role(RoleUser.ADMIN)
                 .build();
     }
 

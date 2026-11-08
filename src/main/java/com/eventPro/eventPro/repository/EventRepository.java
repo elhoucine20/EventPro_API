@@ -19,4 +19,6 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     @EntityGraph(attributePaths = "organisateur") // hibernate utilise join pour effectue ine seul request (Lazy)
     Page<Event> findByOrganisateurId(UUID id, Pageable pageable);  // Page => output, Pageable => input
+
+    List<Event> findAllByOrganisateurId(UUID organisateurId);
 }
