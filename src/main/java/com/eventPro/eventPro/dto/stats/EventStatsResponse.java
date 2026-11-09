@@ -1,11 +1,13 @@
 package com.eventPro.eventPro.dto.stats;
 
 import com.eventPro.eventPro.model.enums.StatusEvenment;
+import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+@Builder
 public record EventStatsResponse(
         UUID eventId,
         String titre,

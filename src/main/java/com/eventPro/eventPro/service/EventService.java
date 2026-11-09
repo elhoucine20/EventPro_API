@@ -1,11 +1,13 @@
 package com.eventPro.eventPro.service;
 
+import com.eventPro.eventPro.dto.categorie.CategorieBilletCreation;
 import com.eventPro.eventPro.dto.event.EventRequest;
 import com.eventPro.eventPro.dto.event.EventResponse;
 import com.eventPro.eventPro.exception.BusinessRuleException;
 import com.eventPro.eventPro.exception.ForbiddenOperationException;
 import com.eventPro.eventPro.exception.ResourceNotFoundException;
 import com.eventPro.eventPro.mapper.event.EventMapper;
+import com.eventPro.eventPro.model.CategorieBillet;
 import com.eventPro.eventPro.model.Event;
 import com.eventPro.eventPro.model.Organisateur;
 import com.eventPro.eventPro.model.enums.StatusEvenment;
@@ -20,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -30,17 +32,21 @@ public class EventService {
     private final OrganisateurRepository organisateurRepository;
     private final EventMapper eventMapper;
     private final CategorieBilletRepository categorieBilletRepository;
+    private final DisponibiliteService disponibiliteService;
 
     @Transactional
-    public EventResponse create(EventRequest request){
+    public EventResponse create(EventRequest request) {
         validateDates(request);
+        validateCategories(request.categories());
         Organisateur organisateur = findOrganisateur(request.organisateurId());
 
         Event event = eventMapper.toEntity(request);
         event.setStatut(StatusEvenment.DRAFT);
         event.setOrganisateur(organisateur);
+        Event saved = eventRepository.save(event);
 
-        return eventMapper.toResponse(eventRepository.save(event));
+        creerCategories(saved, request.categories());
+        return toResponse(saved);
     }
 
     @Transactional
@@ -53,7 +59,7 @@ public class EventService {
         }
         validateDates(request);
         eventMapper.updateEntity(request,event);
-        return eventMapper.toResponse(event);
+        return toResponse(event);
     }
 
     @Transactional
@@ -70,7 +76,7 @@ public class EventService {
         }
 
         event.setStatut(StatusEvenment.PUBLISHED);
-        return eventMapper.toResponse(event);
+        return toResponse(event);
     }
     @Transactional
     public EventResponse annuler(UUID id, UUID organisateurId) {
@@ -80,7 +86,7 @@ public class EventService {
             throw new BusinessRuleException("cette evenement est deja annule ou terminer");
         }
         event.setStatut(StatusEvenment.CANCELLED);
-        return eventMapper.toResponse(event);
+        return toResponse(event);
     }
 
     @Transactional(readOnly = true)
@@ -89,21 +95,19 @@ public class EventService {
         if (event.getStatut() != StatusEvenment.PUBLISHED){
             throw new ResourceNotFoundException("evenment introuvable "+id);
         }
-        return eventMapper.toResponse(event);
+        return toResponse(event);
     }
 
     @Transactional(readOnly = true)
     public Page<EventResponse> listPublished(Pageable pageable){
-        return eventRepository.findByStatut(StatusEvenment.PUBLISHED,pageable).map(eventMapper::toResponse);
-    }
+        return toResponses(eventRepository.findByStatut(StatusEvenment.PUBLISHED, pageable));    }
 
     @Transactional(readOnly = true)
     public Page<EventResponse> listByOrganisateur(UUID organisateurId, Pageable pageable) {
         if (!organisateurRepository.existsById(organisateurId)) {
             throw new ResourceNotFoundException("Organisateur introuvable : " + organisateurId);
         }
-        return eventRepository.findByOrganisateurId(organisateurId, pageable)
-                .map(eventMapper::toResponse);
+        return toResponses(eventRepository.findByOrganisateurId(organisateurId, pageable));
     }
 
     // ---------- helpers ----------
@@ -141,4 +145,50 @@ public class EventService {
     }
 
 
+
+    //
+    private EventResponse toResponse(Event event) {
+        int places = disponibiliteService.placesParEvent(List.of(event.getId())).getOrDefault(event.getId(), 0);
+        return eventMapper.toResponse(event, places);
+    }
+
+    private Page<EventResponse> toResponses(Page<Event> page) {
+        Map<UUID, Integer> places = disponibiliteService.placesParEvent(
+                page.getContent().stream().map(Event::getId).toList());
+        return page.map(e -> eventMapper.toResponse(e, places.getOrDefault(e.getId(), 0)));
+    }
+
+
+    // for create categorie
+    private void validateCategories(List<CategorieBilletCreation> categories) {
+        if (categories == null) {
+            return;
+        }
+        Set<String> noms = new HashSet<>();
+        for (CategorieBilletCreation c : categories) {
+            if (c.quotaMaxParClient() > c.quantiteTotale()) {
+                throw new BusinessRuleException(
+                        "Le quota par client ne peut pas dépasser la quantité totale (catégorie \"" + c.nom() + "\")");
+            }
+            if (!noms.add(c.nom().strip().toLowerCase())) {
+                throw new BusinessRuleException("Deux catégories portent le même nom : \"" + c.nom() + "\"");
+            }
+        }
+    }
+
+    private void creerCategories(Event event, List<CategorieBilletCreation> categories) {
+        if (categories == null || categories.isEmpty()) {
+            return;
+        }
+        List<CategorieBillet> entities = categories.stream()
+                .map(c -> CategorieBillet.builder()
+                        .nom(c.nom().strip())
+                        .prixUnitaire(c.prixUnitaire())
+                        .quantiteTotale(Long.valueOf(c.quantiteTotale()))
+                        .quotaMaxParClient(c.quotaMaxParClient())
+                        .event(event)
+                        .build())
+                .toList();
+        categorieBilletRepository.saveAll(entities);
+    }
 }

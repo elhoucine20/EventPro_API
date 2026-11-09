@@ -1,11 +1,14 @@
 package com.eventPro.eventPro.dto.event;
 
+import com.eventPro.eventPro.dto.categorie.CategorieBilletCreation;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record EventRequest(
@@ -35,6 +38,12 @@ public record EventRequest(
         LocalDateTime dateClotureVente,
 
         @NotNull(message = "L'organisateur est obligatoire")
-        UUID organisateurId
-) {
+        UUID organisateurId,
+
+
+        //
+        @Valid
+        @Size(max = 10, message = "10 catégories maximum")
+        List<CategorieBilletCreation> categories
+){
 }

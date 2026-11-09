@@ -1,7 +1,6 @@
-package com.eventPro.eventPro.exception;
+package com.eventPro.eventPro.globalException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.eventPro.eventPro.exception.*;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -51,7 +50,12 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, Map<String, String> errors) {
         return ResponseEntity.status(status)
-                .body(new ErrorResponse(LocalDateTime.now(), status.value(), message, errors));
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(status.value())
+                        .message(message)
+                        .errors(errors)
+                        .build());
     }
 
 

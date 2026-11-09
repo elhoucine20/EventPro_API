@@ -65,4 +65,33 @@ public interface LigneReservationRepository extends JpaRepository<LigneReservati
             """)
         List<CleQuantiteMontant> sumVentesParCategorie(@Param("eventId") UUID eventId);
 
+
+
+    //places restants
+        @Query("""
+            select new com.eventPro.eventPro.repository.projection.CleQuantite(l.categorieBillet.id, sum(l.quantite))
+            from LigneReservation l
+            where l.categorieBillet.event.id = :eventId
+              and (l.reservation.statut = com.eventPro.eventPro.model.enums.StatutReservation.CONFIRMED
+                   or (l.reservation.statut = com.eventPro.eventPro.model.enums.StatutReservation.PENDING_PAYMENT
+                       and l.reservation.dateExpiration > :now))
+            group by l.categorieBillet.id
+            """)
+        List<CleQuantite> sumQuantitesActivesParCategorie(@Param("eventId") UUID eventId,
+                                                          @Param("now") LocalDateTime now);
+
+        @Query("""
+            select new com.eventPro.eventPro.repository.projection.CleQuantite(l.categorieBillet.event.id, sum(l.quantite))
+            from LigneReservation l
+            where l.categorieBillet.event.id in :eventIds
+              and (l.reservation.statut = com.eventPro.eventPro.model.enums.StatutReservation.CONFIRMED
+                   or (l.reservation.statut = com.eventPro.eventPro.model.enums.StatutReservation.PENDING_PAYMENT
+                       and l.reservation.dateExpiration > :now))
+            group by l.categorieBillet.event.id
+            """)
+        List<CleQuantite> sumQuantitesActivesParEvent(@Param("eventIds") Collection<UUID> eventIds,
+                                                      @Param("now") LocalDateTime now);
+
+    //
+
 }

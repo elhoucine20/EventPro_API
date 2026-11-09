@@ -22,7 +22,8 @@ public interface EventMapper {
 
     @Mapping(target = "organisateurId", source = "organisateur.id")
     @Mapping(target = "nomOrganisation", source = "organisateur.nomOrganisation")
-    EventResponse toResponse(Event event);
+    @Mapping(target = "placesDisponibles", source = "placesDisponibles")
+    EventResponse toResponse(Event event,Integer placesDisponibles);
 
 
     @Mapping(target = "id", ignore = true)

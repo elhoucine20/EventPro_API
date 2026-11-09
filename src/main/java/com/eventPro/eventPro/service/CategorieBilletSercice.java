@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -25,6 +26,7 @@ public class CategorieBilletSercice {
     private final EventRepository eventRepository;
     private final CategorieBilletMapper categorieBilletMapper;
     private final CategorieBilletRepository categorieBilletRepository;
+    private final DisponibiliteService disponibiliteService;
 
     @Transactional
     public CategorieBilletResponse create(UUID eventId, CategorieBilletRequest request){
@@ -37,8 +39,8 @@ public class CategorieBilletSercice {
 
         CategorieBillet categorie = categorieBilletMapper.toEntity(request);
         categorie.setEvent(event);
-        return categorieBilletMapper.toResponse(categorieBilletRepository.save(categorie));
-    }
+        CategorieBillet saved = categorieBilletRepository.save(categorie);
+        return categorieBilletMapper.toResponse(saved, Math.toIntExact(saved.getQuantiteTotale()));    }
 
     @Transactional(readOnly = true)
     public List<CategorieBilletResponse> listByEvent(UUID eventId){
@@ -46,8 +48,11 @@ public class CategorieBilletSercice {
         if (event.getStatut() != StatusEvenment.PUBLISHED){
             throw new ResourceNotFoundException("evenment introuvable : "+ eventId);
         }
-        return categorieBilletRepository.findByEventId(eventId).stream().map(categorieBilletMapper::toResponse).toList();
-    }
+        List<CategorieBillet> categories = categorieBilletRepository.findByEventId(eventId);
+        Map<UUID, Integer> places = disponibiliteService.placesParCategorie(eventId, categories);
+        return categories.stream()
+                .map(c -> categorieBilletMapper.toResponse(c, places.get(c.getId())))
+                .toList();    }
 
     @Transactional
     public CategorieBilletResponse update(UUID id,CategorieBilletRequest request){
@@ -60,8 +65,8 @@ public class CategorieBilletSercice {
             checkNomUnique(event.getId(),request.nom());
         }
         categorieBilletMapper.updateEntity(request,categorie);
-        return categorieBilletMapper.toResponse(categorie);
-    }
+        Map<UUID, Integer> places = disponibiliteService.placesParCategorie(event.getId(), List.of(categorie));
+        return categorieBilletMapper.toResponse(categorie, places.get(categorie.getId()));    }
 
     @Transactional
     public void delete(UUID id , UUID organisateurId){

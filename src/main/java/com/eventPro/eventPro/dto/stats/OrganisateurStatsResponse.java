@@ -1,9 +1,12 @@
 package com.eventPro.eventPro.dto.stats;
 
+import lombok.Builder;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+@Builder
 public record OrganisateurStatsResponse(
         UUID organisateurId,
         String nomOrganisation,

@@ -1,10 +1,12 @@
 package com.eventPro.eventPro.dto.event;
 
 import com.eventPro.eventPro.model.enums.StatusEvenment;
+import lombok.Builder;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Builder
 public record EventResponse(
         UUID id,
         String titre,
@@ -16,6 +18,7 @@ public record EventResponse(
         LocalDateTime dateClotureVente,
         StatusEvenment statut,
         UUID organisateurId,
-        String nomOrganisation
+        String nomOrganisation,
+        Integer placesDisponibles
 ) {
 }
