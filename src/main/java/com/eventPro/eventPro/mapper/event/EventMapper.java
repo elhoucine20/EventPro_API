@@ -19,12 +19,10 @@ public interface EventMapper {
     @Mapping(target = "promotions", ignore = true)
     Event toEntity(EventRequest request);
 
-
-    @Mapping(target = "organisateurId", source = "organisateur.id")
-    @Mapping(target = "nomOrganisation", source = "organisateur.nomOrganisation")
+    @Mapping(target = "organisateurId", source = "event.organisateur.id")
+    @Mapping(target = "nomOrganisation", source = "event.organisateur.nomOrganisation")
     @Mapping(target = "placesDisponibles", source = "placesDisponibles")
-    EventResponse toResponse(Event event,Integer placesDisponibles);
-
+    EventResponse toResponse(Event event, Integer placesDisponibles);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "statut", ignore = true)

@@ -15,9 +15,9 @@ public interface CategorieBilletMapper {
     @Mapping(target = "event",ignore = true)
     CategorieBillet toEntity(CategorieBilletRequest request);
 
-    @Mapping(target = "eventId",source = "event.id")
+    @Mapping(target = "eventId", source = "categorieBillet.event.id")
     @Mapping(target = "placesDisponibles", source = "placesDisponibles")
-    CategorieBilletResponse toResponse(CategorieBillet categorieBillet,Integer placesDisponibles);
+    CategorieBilletResponse toResponse(CategorieBillet categorieBillet, Integer placesDisponibles);
 
     @Mapping(target = "id",ignore = true)
     @Mapping(target = "event",ignore = true)
