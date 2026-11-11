@@ -11,7 +11,4 @@ class EventProApplicationTests {
 	@Test
 	void contextLoads() {
 	}
-
-
-
 }
