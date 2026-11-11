@@ -1,0 +1,52 @@
+
+// pepline est une ensemble des instrections pour jenkins, que gerer les étapes apres le changement de code a github
+pipeline {
+    agent any  // any agent ,selon mon machine
+
+    options { // les champs que pas necessires mais bon pratique
+        timestamps() // time pour voir warning ou error derictement dans jenkins
+        timeout(time: 20, unit: 'MINUTES') //  ne deppass pas 20 a build
+        disableConcurrentBuilds()  // if un build lancer attendu
+        buildDiscarder(logRotator(numToKeepStr: '20'))  // historique de build maximun 20
+    }
+
+    triggers { // listener
+        pollSCM('H/2 * * * *') // chaque 2 min listener sur github if un changement build
+    }
+
+    stages { // relation avec l'app, (layyers)
+        stage('Checkout') { //  Checkout => layyern que recupere la version final de code
+            steps {
+                checkout scm
+                sh 'git log -1 --pretty="%h %s"'
+            }
+        }
+
+        stage('Build') { // layyer que build par maven
+            steps {
+                sh 'chmod +x mvnw'  //
+                sh './mvnw -B -ntp clean compile' //
+            }
+        }
+
+        stage('Tests') {  // run tests unitaires
+            steps {
+                sh './mvnw -B -ntp test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml' // tout les tests de l'application
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+           echo 'Pipeline OK'
+        }
+        failure {
+           echo 'Pipeline en échec : consulter les logs ci-dessus'
+        }
+    }
+}
