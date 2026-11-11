@@ -5,7 +5,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
-@ActiveProfiles("test")
+@ActiveProfiles("test") // pour utuluser le file application-test.properties  by default derictement application.properties
 class EventProApplicationTests {
 
 	@Test
