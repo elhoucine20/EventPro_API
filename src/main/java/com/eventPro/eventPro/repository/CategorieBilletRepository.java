@@ -23,7 +23,7 @@ public interface CategorieBilletRepository extends JpaRepository<CategorieBillet
     boolean existsByEventIdAndNomIgnoreCase(UUID eventId,String nom);
     Long countByEventId(UUID eventId);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Lock(LockModeType.PESSIMISTIC_WRITE) // problem de race condition => hibernate faire FOR UPDATE sedd lignes
     @Query("select c from CategorieBillet c where c.id in :ids order by c.id")
     List<CategorieBillet> findAllByIdForUpdate(@Param("ids") Collection<UUID> ids);
 

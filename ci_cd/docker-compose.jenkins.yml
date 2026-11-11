@@ -1,0 +1,23 @@
+name: eventpro-ci_cd
+
+services:
+  jenkins:
+    build: ./jenkins
+    image: eventpro-jenkins:lts-jdk21
+    container_name: jenkins
+    restart: unless-stopped
+    user: root                       # voir la note de sécurité ci-dessous
+    ports:
+      - "9090:8080"                  # interface web
+      - "50000:50000"                # agents distants
+    volumes:
+      - jenkins_home:/var/jenkins_home          # configuration, historique, cache Maven
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: Africa/Casablanca
+      JAVA_OPTS: "-Duser.timezone=Africa/Casablanca"
+
+volumes:
+  jenkins_home:
+    external: true
+    name: jenkins_home

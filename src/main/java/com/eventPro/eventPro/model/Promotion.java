@@ -36,7 +36,6 @@ public class Promotion {
     private BigDecimal valeurReduction;
 
     @Column(nullable = false)
-    //@JsonFormat(shape = JsonFormat.Shape.STRING,pattern = "dd-MM-yyyy")
     private LocalDate dateDebut;
 
     @Column(nullable = false)
@@ -48,10 +47,6 @@ public class Promotion {
     @Column(nullable = false)
     @Builder.Default
     private Integer nombreUtilisations = 0;
-
-   // @OneToMany(mappedBy = "promotion")
-    //@Builder.Default
-    //private List<Event> events = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY,optional = false)
     @JoinColumn(name = "event_id",nullable = false)

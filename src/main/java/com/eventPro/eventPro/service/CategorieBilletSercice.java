@@ -40,7 +40,8 @@ public class CategorieBilletSercice {
         CategorieBillet categorie = categorieBilletMapper.toEntity(request);
         categorie.setEvent(event);
         CategorieBillet saved = categorieBilletRepository.save(categorie);
-        return categorieBilletMapper.toResponse(saved, Math.toIntExact(saved.getQuantiteTotale()));    }
+        return categorieBilletMapper.toResponse(saved, Math.toIntExact(saved.getQuantiteTotale()));
+    }
 
     @Transactional(readOnly = true)
     public List<CategorieBilletResponse> listByEvent(UUID eventId){

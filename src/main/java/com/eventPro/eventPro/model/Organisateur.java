@@ -18,7 +18,7 @@ public class Organisateur extends User{
     @Column(nullable = false)
     private String nomOrganisation;
 
-    @OneToMany(mappedBy = "organisateur",cascade = CascadeType.ALL,orphanRemoval = true)
+    @OneToMany(mappedBy = "organisateur")
     @Builder.Default
     private List<Event> events = new ArrayList<>();
 }

@@ -7,7 +7,7 @@ import com.eventPro.eventPro.dto.user.RegisterOrganisateurRequest;
 import com.eventPro.eventPro.dto.user.UserResponse;
 import com.eventPro.eventPro.exception.EmailAlreadyUsedException;
 import com.eventPro.eventPro.exception.ResourceNotFoundException;
-import com.eventPro.eventPro.mapper.user.UserMapperrr;
+import com.eventPro.eventPro.mapper.user.UserMapper;
 import com.eventPro.eventPro.model.User;
 import com.eventPro.eventPro.repository.UserRepository;
 import com.eventPro.eventPro.util.PasswordUtils;
@@ -22,7 +22,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
-    private final UserMapperrr userMapper;
+    private final UserMapper userMapper;
     private final PasswordUtils passwordUtils;
 
     @Transactional

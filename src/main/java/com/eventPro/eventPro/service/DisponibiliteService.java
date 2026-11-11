@@ -25,8 +25,7 @@ public class DisponibiliteService {
 
     @Transactional(readOnly = true)
     public Map<UUID, Integer> placesParCategorie(UUID eventId, Collection<CategorieBillet> categories) {
-        Map<UUID, Long> prises = toMap(
-                ligneReservationRepository.sumQuantitesActivesParCategorie(eventId, LocalDateTime.now()));
+        Map<UUID, Long> prises = toMap(ligneReservationRepository.sumQuantitesActivesParCategorie(eventId, LocalDateTime.now()));
 
         Map<UUID, Integer> places = new HashMap<>();
         for (CategorieBillet categorie : categories) {
@@ -42,8 +41,7 @@ public class DisponibiliteService {
             return Map.of();
         }
         Map<UUID, Long> totaux = toMap(categorieBilletRepository.sumQuantiteTotaleParEvent(eventIds));
-        Map<UUID, Long> prises = toMap(
-                ligneReservationRepository.sumQuantitesActivesParEvent(eventIds, LocalDateTime.now()));
+        Map<UUID, Long> prises = toMap(ligneReservationRepository.sumQuantitesActivesParEvent(eventIds, LocalDateTime.now()));
 
         Map<UUID, Integer> places = new HashMap<>();
         for (UUID eventId : eventIds) {

@@ -4,7 +4,6 @@ import com.eventPro.eventPro.model.enums.StatusEvenment;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,9 +59,6 @@ public class Event{
 
 
     //promotion
-    //@ManyToOne(fetch = FetchType.LAZY)
-    //@JoinColumn(name = "promotion_id")
-    //private Promotion promotion;
     @OneToMany(mappedBy = "event")
     @Builder.Default
     private List<Promotion> promotions = new ArrayList<>();
