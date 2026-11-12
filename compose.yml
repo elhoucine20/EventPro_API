@@ -1,0 +1,3 @@
+include:
+  - docker-compose.yml
+  - ci_cd/docker-compose.jenkins.yml

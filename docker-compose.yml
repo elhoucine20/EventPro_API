@@ -1,0 +1,64 @@
+name: eventpro
+
+services:
+
+  db:
+    image: postgres:17-alpine            # le cahier des charges demande PostgreSQL 15+
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-eventpro}
+      POSTGRES_USER: ${POSTGRES_USER:-eventpro}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, copie .env.example vers .env}"
+    volumes:
+      - eventpro_db:/var/lib/postgresql/data     # les données survivent aux redémarrages et aux rebuilds
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5433}:5432"   # visible depuis ta machine seulement (pgAdmin), jamais depuis Internet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  app:
+    build:
+      context: .
+    image: eventpro-api:${APP_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy       # l'application ne démarre que lorsque la base répond
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-eventpro}
+      DB_USERNAME: ${POSTGRES_USER:-eventpro}
+      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}"
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    ports:
+      - "${APP_PORT:-8080}:8080"         # derrière un reverse proxy HTTPS : "127.0.0.1:8080:8080"
+    read_only: true                      # le système de fichiers du conteneur est en lecture seule...
+    tmpfs:
+      - /tmp                             # ...sauf /tmp (en mémoire), dont Tomcat a besoin
+    cap_drop:
+      - ALL                              # aucune capacité Linux spéciale
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 40s               # laisse finir les requêtes en cours (arrêt propre de Spring : 30 s)
+    deploy:
+      resources:
+        limits:
+          memory: 768m                   # tas Java = 75 % de cette valeur
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  eventpro_db:
