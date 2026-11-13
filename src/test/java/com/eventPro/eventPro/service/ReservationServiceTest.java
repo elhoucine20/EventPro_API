@@ -22,16 +22,14 @@ import com.eventPro.eventPro.repository.LigneReservationRepository;
 import com.eventPro.eventPro.repository.PromotionRepository;
 import com.eventPro.eventPro.repository.ReservationRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -45,31 +43,34 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class ReservationServiceTest {
 
-    @Mock private ReservationRepository reservationRepository;
-    @Mock private LigneReservationRepository ligneReservationRepository;
-    @Mock private ClientRepository clientRepository;
-    @Mock private EventRepository eventRepository;
-    @Mock private CategorieBilletRepository categorieBilletRepository;
-    @Mock private PromotionRepository promotionRepository;
-    @Mock private ReservationMapper reservationMapper;
+    @Mock
+    private ReservationRepository reservationRepository;
+    @Mock
+    private LigneReservationRepository ligneReservationRepository;
+    @Mock
+    private ClientRepository clientRepository;
+    @Mock
+    private EventRepository eventRepository;
+    @Mock
+    private CategorieBilletRepository categorieBilletRepository;
+    @Mock
+    private PromotionRepository promotionRepository;
+    @Mock
+    private ReservationMapper reservationMapper;
 
-    @InjectMocks private ReservationService service;
+    @InjectMocks
+    private ReservationService service;
 
     private final UUID clientId = UUID.randomUUID();
     private final UUID eventId = UUID.randomUUID();
@@ -85,611 +86,683 @@ class ReservationServiceTest {
     private Event event;
     private CategorieBillet vip;   // 500 MAD, 10 places, quota 4
     private CategorieBillet std;   // 150 MAD, 100 places, quota 6
+    private ReservationResponse response;
 
     @BeforeEach
     void setUp() {
+        // @Value("${app.reservation.hold-minutes}") n'est pas rempli sans Spring : on le force a 15
         ReflectionTestUtils.setField(service, "holdMinutes", 15L);
 
         client = mock(Client.class);
-        lenient().when(client.getId()).thenReturn(clientId);
+        when(client.getId()).thenReturn(clientId);
 
-        event = Event.builder()
-                .id(eventId)
-                .statut(StatusEvenment.PUBLISHED)
-                .dateOuvertureVente(now.minusDays(1))
-                .dateClotureVente(now.plusDays(10))
-                .build();
+        event = Event.builder().id(eventId).statut(StatusEvenment.PUBLISHED)
+                .dateOuvertureVente(now.minusDays(1)).dateClotureVente(now.plusDays(10)).build();
 
         vip = CategorieBillet.builder().id(vipId).nom("VIP")
                 .prixUnitaire(new BigDecimal("500.00")).quantiteTotale(10L).quotaMaxParClient(4).event(event).build();
         std = CategorieBillet.builder().id(stdId).nom("Standard")
                 .prixUnitaire(new BigDecimal("150.00")).quantiteTotale(100L).quotaMaxParClient(6).event(event).build();
+
+        response = mock(ReservationResponse.class);
+
+        // environnement "tout va bien" pour create() : chaque test change juste ce qu'il veut tester
+        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        // retourne seulement les categories demandees (vip / std) selon la liste d'ids
+        when(categorieBilletRepository.findAllByIdForUpdate(anyList())).thenAnswer(inv -> {
+            List<UUID> ids = inv.getArgument(0);
+            return List.of(vip, std).stream().filter(c -> ids.contains(c.getId())).toList();
+        });
+        stockEtQuota(vip, 0, 0);
+        stockEtQuota(std, 0, 0);
+        when(reservationRepository.existsByReference(anyString())).thenReturn(false);
+        when(reservationRepository.save(any(Reservation.class))).thenAnswer(i -> i.getArgument(0));
+        when(reservationMapper.toResponse(any(Reservation.class))).thenReturn(response);
     }
 
-    // ================= helpers =================
-
-    private LigneReservationRequest ligne(UUID categorieId, int quantite) {
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    private LigneReservationRequest OneLigne(UUID categorieId, int quantite) {
         LigneReservationRequest l = mock(LigneReservationRequest.class);
-        lenient().when(l.categorieBilletId()).thenReturn(categorieId);
-        lenient().when(l.quantite()).thenReturn(quantite);
+        when(l.categorieBilletId()).thenReturn(categorieId);
+        when(l.quantite()).thenReturn(quantite);
         return l;
     }
 
-    private ReservationRequest request(String promoCode, LigneReservationRequest... lignes) {
+    private ReservationRequest OneRequest(String promoCode, LigneReservationRequest... lignes) {
         ReservationRequest r = mock(ReservationRequest.class);
-        lenient().when(r.clientId()).thenReturn(clientId);
-        lenient().when(r.promoCode()).thenReturn(promoCode);
-        lenient().when(r.lignes()).thenReturn(List.of(lignes));
+        when(r.clientId()).thenReturn(clientId);
+        when(r.promoCode()).thenReturn(promoCode);
+        when(r.lignes()).thenReturn(List.of(lignes));
         return r;
     }
 
-    private Promotion promo(TypeReduction type, String valeur, LocalDate debut, LocalDate fin, int nb, int max) {
+    private Promotion OnePromo(TypeReduction type, String valeur, LocalDate debut, LocalDate fin, int nb, int max) {
         return Promotion.builder().id(promoId).code("TEST10").typeReduction(type)
                 .valeurReduction(new BigDecimal(valeur)).dateDebut(debut).dateFin(fin)
                 .maxUtilisations(max).nombreUtilisations(nb).event(event).build();
     }
 
-    private Promotion promoValide10pct() {
-        return promo(TypeReduction.PERCENTAGE, "10", today.minusDays(1), today.plusDays(10), 0, 100);
+    private Promotion PromoValide10pct() {
+        return OnePromo(TypeReduction.PERCENTAGE, "10", today.minusDays(1), today.plusDays(10), 0, 100);
     }
 
+    // quantite deja prise (stock) et deja prise par ce client (quota) pour une categorie
     private void stockEtQuota(CategorieBillet c, long pris, long dejaPrisParClient) {
-        lenient().when(ligneReservationRepository.sumQuantiteActive(eq(c.getId()), any(LocalDateTime.class)))
+        when(ligneReservationRepository.sumQuantiteActive(eq(c.getId()), any(LocalDateTime.class)))
                 .thenReturn(pris);
-        lenient().when(ligneReservationRepository.sumQuantiteActiveByClient(eq(c.getId()), eq(clientId), any(LocalDateTime.class)))
+        when(ligneReservationRepository.sumQuantiteActiveByClient(eq(c.getId()), eq(clientId), any(LocalDateTime.class)))
                 .thenReturn(dejaPrisParClient);
     }
 
-    private Reservation reservation(StatutReservation statut, LocalDateTime expiration, Promotion promotion, Event ev) {
-        return Reservation.builder()
-                .reference("REF-TEST")
-                .statut(statut)
-                .dateExpiration(expiration)
-                .client(client)
-                .event(ev)
-                .promotion(promotion)
-                .build();
+    private Reservation OneReservation(StatutReservation statut, LocalDateTime expiration, Promotion promotion, Event ev) {
+        return Reservation.builder().reference("REF-TEST").statut(statut).dateExpiration(expiration)
+                .client(client).event(ev).promotion(promotion).build();
+    }
+
+    // recupere la reservation envoyee a save()
+    private Reservation reservationSauvegardee() {
+        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+        verify(reservationRepository).save(captor.capture());
+        return captor.getValue();
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("create")
-    class Create {
-
-        private ReservationResponse response;
-
-        @BeforeEach
-        void env() {
-            response = mock(ReservationResponse.class);
-            lenient().when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
-            lenient().when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            lenient().when(categorieBilletRepository.findAllByIdForUpdate(anyList())).thenAnswer(inv -> {
-                List<UUID> ids = inv.getArgument(0);
-                return List.of(vip, std).stream().filter(c -> ids.contains(c.getId())).toList();
-            });
-            stockEtQuota(vip, 0, 0);
-            stockEtQuota(std, 0, 0);
-            lenient().when(reservationRepository.existsByReference(anyString())).thenReturn(false);
-            lenient().when(reservationRepository.save(any(Reservation.class))).thenAnswer(i -> i.getArgument(0));
-            lenient().when(reservationMapper.toResponse(any(Reservation.class))).thenReturn(response);
-        }
-
-        private Reservation reservationSauvegardee() {
-            ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
-            verify(reservationRepository).save(captor.capture());
-            return captor.getValue();
-        }
-
-        @Test
-        void nominalSansPromo_calculeLeTotalEtInitialiseLaReservation() {
-            ReservationRequest request = request(null, ligne(vipId, 1), ligne(stdId, 1));
-            LocalDateTime avant = LocalDateTime.now();
-
-            ReservationResponse result = service.create(eventId, request);
-
-            LocalDateTime apres = LocalDateTime.now();
-            assertThat(result).isSameAs(response);
-            Reservation r = reservationSauvegardee();
-            assertThat(r.getMontantTotal()).isEqualByComparingTo("650");
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.PENDING_PAYMENT);
-            assertThat(r.getReference()).startsWith("REF-");
-            assertThat(r.getClient()).isSameAs(client);
-            assertThat(r.getEvent()).isSameAs(event);
-            assertThat(r.getPromotion()).isNull();
-            assertThat(r.getLignes()).hasSize(2);
-            assertThat(r.getDateExpiration()).isBetween(avant.plusMinutes(15), apres.plusMinutes(15));
-            verify(promotionRepository, never()).findByEventIdAndCode(any(), anyString());
-            verify(promotionRepository, never()).incrementUtulisation(any());
-        }
-
-        @Test
-        void chaqueLigne_garde_prixUnitaire_quantite_et_sousTotal() {
-            service.create(eventId, request(null, ligne(vipId, 2)));
-
-            Reservation r = reservationSauvegardee();
-            assertThat(r.getLignes()).hasSize(1);
-            assertThat(r.getLignes().get(0).getQuantite()).isEqualTo(2);
-            assertThat(r.getLignes().get(0).getPrixUnitaire()).isEqualByComparingTo("500");
-            assertThat(r.getLignes().get(0).getSousTotal()).isEqualByComparingTo("1000");
-        }
-
-        @Test
-        void avecPromoPourcentage10_appliqueLaReductionEtIncrementeLUtilisation() {
-            Promotion promotion = promoValide10pct();
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(promotion));
-            when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
-
-            service.create(eventId, request("TEST10", ligne(vipId, 1), ligne(stdId, 1)));
-
-            Reservation r = reservationSauvegardee();
-            assertThat(r.getMontantTotal()).isEqualByComparingTo("585");   // 650 - 10%
-            assertThat(r.getPromotion()).isSameAs(promotion);
-            verify(promotionRepository).incrementUtulisation(promoId);
-        }
-
-        @Test
-        void avecPromoMontantFixe50_soustraitLeMontant() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(
-                    promo(TypeReduction.FIXED_AMOUNT, "50", today.minusDays(1), today.plusDays(10), 0, 100)));
-            when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
-
-            service.create(eventId, request("TEST10", ligne(vipId, 1), ligne(stdId, 1)));
-
-            assertThat(reservationSauvegardee().getMontantTotal()).isEqualByComparingTo("600");
-        }
-
-        @Test
-        void promoMontantFixeSuperieurAuTotal_plafonneLeTotalAZero() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(
-                    promo(TypeReduction.FIXED_AMOUNT, "1000", today.minusDays(1), today.plusDays(10), 0, 100)));
-            when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
-
-            service.create(eventId, request("TEST10", ligne(vipId, 1), ligne(stdId, 1)));
-
-            assertThat(reservationSauvegardee().getMontantTotal()).isEqualByComparingTo("0");
-        }
-
-        @Test
-        void stockExactementEgalALaQuantiteDemandee_estAccepte() {
-            stockEtQuota(vip, 8, 0);   // 10 - 8 = 2 disponibles
-
-            service.create(eventId, request(null, ligne(vipId, 2)));
+    // create : cas nominaux
+    // =====================================================================
+    @Test
+    void create_nominalSansPromo_calculeLeTotalEtInitialiseLaReservation() {
+        // ARRANGE
+        ReservationRequest request = OneRequest(null, OneLigne(vipId, 1), OneLigne(stdId, 1));
+        LocalDateTime avant = LocalDateTime.now();
+
+        // ACT
+        ReservationResponse result = service.create(eventId, request);
+
+        // ASSERT
+        LocalDateTime apres = LocalDateTime.now();
+        assertSame(response, result);
+        Reservation r = reservationSauvegardee();
+        assertEquals(0, r.getMontantTotal().compareTo(new BigDecimal("650"))); // 500 + 150
+        assertEquals(StatutReservation.PENDING_PAYMENT, r.getStatut());
+        assertTrue(r.getReference().startsWith("REF-"));
+        assertSame(client, r.getClient());
+        assertSame(event, r.getEvent());
+        assertNull(r.getPromotion());
+        assertEquals(2, r.getLignes().size());
+        // expiration = maintenant + 15 minutes (entre "avant" et "apres")
+        assertFalse(r.getDateExpiration().isBefore(avant.plusMinutes(15)));
+        assertFalse(r.getDateExpiration().isAfter(apres.plusMinutes(15)));
+        verify(promotionRepository, never()).findByEventIdAndCode(any(), anyString());
+        verify(promotionRepository, never()).incrementUtulisation(any());
+    }
+
+    @Test
+    void create_chaqueLigne_garde_prixUnitaire_quantite_et_sousTotal() {
+        service.create(eventId, OneRequest(null, OneLigne(vipId, 2)));
+
+        Reservation r = reservationSauvegardee();
+        assertEquals(1, r.getLignes().size());
+        assertEquals(2, r.getLignes().get(0).getQuantite());
+        assertEquals(0, r.getLignes().get(0).getPrixUnitaire().compareTo(new BigDecimal("500")));
+        assertEquals(0, r.getLignes().get(0).getSousTotal().compareTo(new BigDecimal("1000")));
+    }
+
+    @Test
+    void create_avecPromoPourcentage10_appliqueLaReductionEtIncrementeLUtilisation() {
+        // ARRANGE
+        Promotion promotion = PromoValide10pct();
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(promotion));
+        when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
+
+        // ACT
+        service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1), OneLigne(stdId, 1)));
+
+        // ASSERT
+        Reservation r = reservationSauvegardee();
+        assertEquals(0, r.getMontantTotal().compareTo(new BigDecimal("585"))); // 650 - 10%
+        assertSame(promotion, r.getPromotion());
+        verify(promotionRepository).incrementUtulisation(promoId);
+    }
+
+    @Test
+    void create_avecPromoMontantFixe50_soustraitLeMontant() {
+        Promotion promotion = OnePromo(TypeReduction.FIXED_AMOUNT, "50", today.minusDays(1), today.plusDays(10), 0, 100);
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(promotion));
+        when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
+
+        service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1), OneLigne(stdId, 1)));
+
+        assertEquals(0, reservationSauvegardee().getMontantTotal().compareTo(new BigDecimal("600")));
+    }
+
+    @Test
+    void create_promoMontantFixeSuperieurAuTotal_plafonneLeTotalAZero() {
+        Promotion promotion = OnePromo(TypeReduction.FIXED_AMOUNT, "1000", today.minusDays(1), today.plusDays(10), 0, 100);
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(promotion));
+        when(promotionRepository.incrementUtulisation(promoId)).thenReturn(1);
+
+        service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1), OneLigne(stdId, 1)));
+
+        assertEquals(0, reservationSauvegardee().getMontantTotal().compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    void create_stockExactementEgalALaQuantiteDemandee_estAccepte() {
+        stockEtQuota(vip, 8, 0); // 10 - 8 = 2 disponibles
+
+        service.create(eventId, OneRequest(null, OneLigne(vipId, 2)));
+
+        assertEquals(0, reservationSauvegardee().getMontantTotal().compareTo(new BigDecimal("1000")));
+    }
+
+    @Test
+    void create_quotaExactementAtteint_estAccepte() {
+        stockEtQuota(vip, 0, 2); // 2 + 2 = 4 = quota
+
+        service.create(eventId, OneRequest(null, OneLigne(vipId, 2)));
+
+        assertEquals(1, reservationSauvegardee().getLignes().size());
+    }
+
+    @Test
+    void create_referenceDejaExistante_enRegenereUneAutre() {
+        // la 1ere reference existe deja (true), la 2eme est libre (false)
+        when(reservationRepository.existsByReference(anyString())).thenReturn(true, false);
 
-            assertThat(reservationSauvegardee().getMontantTotal()).isEqualByComparingTo("1000");
-        }
+        service.create(eventId, OneRequest(null, OneLigne(stdId, 1)));
 
-        @Test
-        void quotaExactementAtteint_estAccepte() {
-            stockEtQuota(vip, 0, 2);   // 2 + 2 = 4 = quota
-
-            service.create(eventId, request(null, ligne(vipId, 2)));
-
-            assertThat(reservationSauvegardee().getLignes()).hasSize(1);
-        }
-
-        @Test
-        void referenceDejaExistante_enRegenereUneAutre() {
-            when(reservationRepository.existsByReference(anyString())).thenReturn(true, false);
-
-            service.create(eventId, request(null, ligne(stdId, 1)));
-
-            verify(reservationRepository, times(2)).existsByReference(anyString());
-        }
-
-        // ---------- erreurs ----------
-
-        @Test
-        void clientIntrouvable_leveResourceNotFound_sansChercherLEvent() {
-            when(clientRepository.findById(clientId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(clientId.toString());
-
-            verify(eventRepository, never()).findById(any());
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(ResourceNotFoundException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "PUBLISHED")
-        void eventNonPublie_estInvisible_404(StatusEvenment statut) {
-            event.setStatut(statut);
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(ResourceNotFoundException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void ventePasEncoreOuverte_leveBusinessRule() {
-            event.setDateOuvertureVente(now.plusDays(1));
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void venteCloturee_leveBusinessRule() {
-            event.setDateClotureVente(now.minusMinutes(1));
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void memeCategorieDeuxFois_leveBusinessRule_avantTouteChargeEnBase() {
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1), ligne(vipId, 2))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletRepository, never()).findAllByIdForUpdate(anyList());
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void categorieIntrouvable_leveResourceNotFound() {
-            when(categorieBilletRepository.findAllByIdForUpdate(anyList())).thenReturn(List.of(vip)); // std manquante
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1), ligne(stdId, 1))))
-                    .isInstanceOf(ResourceNotFoundException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void categorieDUnAutreEvent_leveBusinessRule() {
-            Event autre = Event.builder().id(UUID.randomUUID()).statut(StatusEvenment.PUBLISHED).build();
-            vip.setEvent(autre);
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void stockInsuffisant_leveBusinessRule() {
-            stockEtQuota(vip, 9, 0);   // 1 disponible, on en veut 2
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 2))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void stockEpuiseSurLaDeuxiemeLigne_refuseToutEtNeSauvegardeRien() {
-            stockEtQuota(std, 100, 0);   // plus rien en Standard
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 1), ligne(stdId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void quotaDepasse_leveBusinessRule() {
-            stockEtQuota(vip, 0, 3);   // 3 + 2 = 5 > 4
-
-            assertThatThrownBy(() -> service.create(eventId, request(null, ligne(vipId, 2))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void codePromoInexistant_leveBusinessRule_etNeSauvegardeRien() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "NEXISTEPAS")).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.create(eventId, request("NEXISTEPAS", ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(promotionRepository, never()).incrementUtulisation(any());
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void promoExpiree_leveBusinessRule_sansIncrementer() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(
-                    promo(TypeReduction.PERCENTAGE, "10", today.minusDays(10), today.minusDays(1), 0, 100)));
-
-            assertThatThrownBy(() -> service.create(eventId, request("TEST10", ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(promotionRepository, never()).incrementUtulisation(any());
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void promoEpuisee_leveBusinessRule_sansIncrementer() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(
-                    promo(TypeReduction.PERCENTAGE, "10", today.minusDays(1), today.plusDays(10), 2, 2)));
-
-            assertThatThrownBy(() -> service.create(eventId, request("TEST10", ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(promotionRepository, never()).incrementUtulisation(any());
-            verify(reservationRepository, never()).save(any());
-        }
-
-        @Test
-        void promoPriseParUnAutreEntreTemps_incrementRetourneZero_leveBusinessRule() {
-            when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(promoValide10pct()));
-            when(promotionRepository.incrementUtulisation(promoId)).thenReturn(0);
-
-            assertThatThrownBy(() -> service.create(eventId, request("TEST10", ligne(vipId, 1))))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(reservationRepository, never()).save(any());
-        }
+        verify(reservationRepository, times(2)).existsByReference(anyString());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("getById")
-    class GetById {
+    // create : erreurs
+    // =====================================================================
+    @Test
+    void create_clientIntrouvable_ResourceNotFound_sansChercherLEvent() {
+        when(clientRepository.findById(clientId)).thenReturn(Optional.empty());
 
-        @Test
-        void introuvable_leveResourceNotFound() {
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
 
-            assertThatThrownBy(() -> service.getById(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(reservationId.toString());
-        }
+        assertTrue(ex.getMessage().contains(clientId.toString()));
+        verify(eventRepository, never()).findById(any());
+        verify(reservationRepository, never()).save(any());
+    }
 
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void create_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getById(reservationId, UUID.randomUUID()))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
 
-            verify(reservationMapper, never()).toResponse(any(Reservation.class));
-        }
+        verify(reservationRepository, never()).save(any());
+    }
 
-        @Test
-        void proprietaire_retourneLaReponse() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
-            ReservationResponse response = mock(ReservationResponse.class);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(r));
-            when(reservationMapper.toResponse(r)).thenReturn(response);
+    @Test
+    void create_eventDraft_estInvisible_404() {
+        createEventNonPublie(StatusEvenment.DRAFT);
+    }
 
-            assertThat(service.getById(reservationId, clientId)).isSameAs(response);
-        }
+    @Test
+    void create_eventCancelled_estInvisible_404() {
+        createEventNonPublie(StatusEvenment.CANCELLED);
+    }
+
+    @Test
+    void create_eventCompleted_estInvisible_404() {
+        createEventNonPublie(StatusEvenment.COMPLETED);
+    }
+
+    @Test
+    void create_ventePasEncoreOuverte_BusinessRule() {
+        event.setDateOuvertureVente(now.plusDays(1));
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_venteCloturee_BusinessRule() {
+        event.setDateClotureVente(now.minusMinutes(1));
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_memeCategorieDeuxFois_BusinessRule_avantTouteChargeEnBase() {
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1), OneLigne(vipId, 2))));
+
+        verify(categorieBilletRepository, never()).findAllByIdForUpdate(anyList());
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_categorieIntrouvable_ResourceNotFound() {
+        // la base ne retourne que vip : std est manquante
+        when(categorieBilletRepository.findAllByIdForUpdate(anyList())).thenReturn(List.of(vip));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1), OneLigne(stdId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_categorieDUnAutreEvent_BusinessRule() {
+        Event autre = Event.builder().id(UUID.randomUUID()).statut(StatusEvenment.PUBLISHED).build();
+        vip.setEvent(autre);
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_stockInsuffisant_BusinessRule() {
+        stockEtQuota(vip, 9, 0); // 1 disponible, on en veut 2
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 2))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_stockEpuiseSurLaDeuxiemeLigne_refuseToutEtNeSauvegardeRien() {
+        stockEtQuota(std, 100, 0); // plus rien en Standard
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1), OneLigne(stdId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_quotaDepasse_BusinessRule() {
+        stockEtQuota(vip, 0, 3); // 3 + 2 = 5 > 4
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 2))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_codePromoInexistant_BusinessRule_etNeSauvegardeRien() {
+        when(promotionRepository.findByEventIdAndCode(eventId, "NEXISTEPAS")).thenReturn(Optional.empty());
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest("NEXISTEPAS", OneLigne(vipId, 1))));
+
+        verify(promotionRepository, never()).incrementUtulisation(any());
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_promoExpiree_BusinessRule_sansIncrementer() {
+        Promotion expiree = OnePromo(TypeReduction.PERCENTAGE, "10", today.minusDays(10), today.minusDays(1), 0, 100);
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(expiree));
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1))));
+
+        verify(promotionRepository, never()).incrementUtulisation(any());
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_promoEpuisee_BusinessRule_sansIncrementer() {
+        Promotion epuisee = OnePromo(TypeReduction.PERCENTAGE, "10", today.minusDays(1), today.plusDays(10), 2, 2);
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(epuisee));
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1))));
+
+        verify(promotionRepository, never()).incrementUtulisation(any());
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void create_promoPriseParUnAutreEntreTemps_incrementRetourneZero_BusinessRule() {
+        when(promotionRepository.findByEventIdAndCode(eventId, "TEST10")).thenReturn(Optional.of(PromoValide10pct()));
+        when(promotionRepository.incrementUtulisation(promoId)).thenReturn(0);
+
+        assertThrows(BusinessRuleException.class,
+                () -> service.create(eventId, OneRequest("TEST10", OneLigne(vipId, 1))));
+
+        verify(reservationRepository, never()).save(any());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listByClient")
-    class ListByClient {
+    // getById
+    // =====================================================================
+    @Test
+    void getById_introuvable_ResourceNotFound() {
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
 
-        private final Pageable pageable = PageRequest.of(0, 10);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.getById(reservationId, clientId));
 
-        @Test
-        void clientIntrouvable_leveResourceNotFound() {
-            when(clientRepository.existsById(clientId)).thenReturn(false);
+        assertTrue(ex.getMessage().contains(reservationId.toString()));
+    }
 
-            assertThatThrownBy(() -> service.listByClient(clientId, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class);
+    @Test
+    void getById_pasLeProprietaire_Forbidden() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(r));
 
-            verify(reservationRepository, never()).findByClientId(any(), any());
-        }
+        assertThrows(ForbiddenOperationException.class, () -> service.getById(reservationId, UUID.randomUUID()));
 
-        @Test
-        void nominal_retourneLHistoriqueMappe() {
-            Reservation r1 = reservation(StatutReservation.CONFIRMED, now.plusMinutes(5), null, event);
-            Reservation r2 = reservation(StatutReservation.CANCELLED, now.plusMinutes(5), null, event);
-            ReservationResponse resp1 = mock(ReservationResponse.class);
-            ReservationResponse resp2 = mock(ReservationResponse.class);
-            when(clientRepository.existsById(clientId)).thenReturn(true);
-            when(reservationRepository.findByClientId(clientId, pageable))
-                    .thenReturn(new PageImpl<>(List.of(r1, r2), pageable, 2));
-            when(reservationMapper.toResponse(r1)).thenReturn(resp1);
-            when(reservationMapper.toResponse(r2)).thenReturn(resp2);
+        verify(reservationMapper, never()).toResponse(any(Reservation.class));
+    }
 
-            Page<ReservationResponse> page = service.listByClient(clientId, pageable);
+    @Test
+    void getById_proprietaire_retourneLaReponse() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
+        ReservationResponse resp = mock(ReservationResponse.class);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(r));
+        when(reservationMapper.toResponse(r)).thenReturn(resp);
 
-            assertThat(page.getContent()).containsExactly(resp1, resp2);
-        }
+        assertSame(resp, service.getById(reservationId, clientId));
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("annuler")
-    class Annuler {
+    // listByClient
+    // =====================================================================
+    @Test
+    void listByClient_clientIntrouvable_ResourceNotFound() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(clientRepository.existsById(clientId)).thenReturn(false);
 
-        @Test
-        void introuvable_leveResourceNotFound() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.listByClient(clientId, pageable));
 
-            assertThatThrownBy(() -> service.annuler(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+        verify(reservationRepository, never()).findByClientId(any(), any());
+    }
 
-        @Test
-        void pasLeProprietaire_leveForbidden_etNeChangeRien() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void listByClient_nominal_retourneLHistoriqueMappe() {
+        // ARRANGE
+        Pageable pageable = PageRequest.of(0, 10);
+        Reservation r1 = OneReservation(StatutReservation.CONFIRMED, now.plusMinutes(5), null, event);
+        Reservation r2 = OneReservation(StatutReservation.CANCELLED, now.plusMinutes(5), null, event);
+        ReservationResponse resp1 = mock(ReservationResponse.class);
+        ReservationResponse resp2 = mock(ReservationResponse.class);
+        when(clientRepository.existsById(clientId)).thenReturn(true);
+        when(reservationRepository.findByClientId(clientId, pageable))
+                .thenReturn(new PageImpl<>(List.of(r1, r2), pageable, 2));
+        when(reservationMapper.toResponse(r1)).thenReturn(resp1);
+        when(reservationMapper.toResponse(r2)).thenReturn(resp2);
 
-            assertThatThrownBy(() -> service.annuler(reservationId, UUID.randomUUID()))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        // ACT
+        Page<ReservationResponse> page = service.listByClient(clientId, pageable);
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.PENDING_PAYMENT);
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = "PENDING_PAYMENT")
-        void statutDifferentDePending_leveBusinessRule(StatutReservation statut) {
-            Reservation r = reservation(statut, now.plusMinutes(10), promoValide10pct(), event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
-
-            assertThatThrownBy(() -> service.annuler(reservationId, clientId))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            assertThat(r.getStatut()).isEqualTo(statut);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
-
-        @Test
-        void nominalSansPromo_passeEnCancelled_sansToucherAuxPromos() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
-            ReservationResponse response = mock(ReservationResponse.class);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
-            when(reservationMapper.toResponse(r)).thenReturn(response);
-
-            assertThat(service.annuler(reservationId, clientId)).isSameAs(response);
-
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.CANCELLED);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
-
-        @Test
-        void nominalAvecPromo_passeEnCancelled_etRendLUtilisation() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), promoValide10pct(), event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
-            when(reservationMapper.toResponse(r)).thenReturn(mock(ReservationResponse.class));
-
-            service.annuler(reservationId, clientId);
-
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.CANCELLED);
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
+        // ASSERT
+        assertEquals(2, page.getContent().size());
+        assertSame(resp1, page.getContent().get(0));
+        assertSame(resp2, page.getContent().get(1));
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("expirer")
-    class Expirer {
+    // annuler
+    // =====================================================================
+    @Test
+    void annuler_introuvable_ResourceNotFound() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
 
-        @Test
-        void introuvable_retourneFalse() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.annuler(reservationId, clientId));
+    }
 
-            assertThat(service.expirer(reservationId)).isFalse();
-        }
+    @Test
+    void annuler_pasLeProprietaire_Forbidden_etNeChangeRien() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
 
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = "PENDING_PAYMENT")
-        void statutDifferentDePending_retourneFalse_etNeChangeRien(StatutReservation statut) {
-            Reservation r = reservation(statut, now.minusMinutes(5), promoValide10pct(), event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        assertThrows(ForbiddenOperationException.class, () -> service.annuler(reservationId, UUID.randomUUID()));
 
-            assertThat(service.expirer(reservationId)).isFalse();
+        assertEquals(StatutReservation.PENDING_PAYMENT, r.getStatut());
+    }
 
-            assertThat(r.getStatut()).isEqualTo(statut);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+    @Test
+    void annuler_statutConfirmed_BusinessRule() {
+        annulerRefuse(StatutReservation.CONFIRMED);
+    }
 
-        @Test
-        void pasEncoreExpiree_retourneFalse() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(5), promoValide10pct(), event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void annuler_statutCancelled_BusinessRule() {
+        annulerRefuse(StatutReservation.CANCELLED);
+    }
 
-            assertThat(service.expirer(reservationId)).isFalse();
+    @Test
+    void annuler_statutExpired_BusinessRule() {
+        annulerRefuse(StatutReservation.EXPIRED);
+    }
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.PENDING_PAYMENT);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+    @Test
+    void annuler_statutRefunded_BusinessRule() {
+        annulerRefuse(StatutReservation.REFUNDED);
+    }
 
-        @Test
-        void expireeSansPromo_passeEnExpired() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.minusMinutes(1), null, event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void annuler_nominalSansPromo_passeEnCancelled_sansToucherAuxPromos() {
+        // ARRANGE
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, event);
+        ReservationResponse resp = mock(ReservationResponse.class);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        when(reservationMapper.toResponse(r)).thenReturn(resp);
 
-            assertThat(service.expirer(reservationId)).isTrue();
+        // ACT
+        ReservationResponse result = service.annuler(reservationId, clientId);
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.EXPIRED);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+        // ASSERT
+        assertSame(resp, result);
+        assertEquals(StatutReservation.CANCELLED, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
 
-        @Test
-        void expireeAvecPromo_passeEnExpired_etRendLUtilisation() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.minusMinutes(1), promoValide10pct(), event);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void annuler_nominalAvecPromo_passeEnCancelled_etRendLUtilisation() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), PromoValide10pct(), event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        when(reservationMapper.toResponse(r)).thenReturn(mock(ReservationResponse.class));
 
-            assertThat(service.expirer(reservationId)).isTrue();
+        service.annuler(reservationId, clientId);
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.EXPIRED);
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
+        assertEquals(StatutReservation.CANCELLED, r.getStatut());
+        verify(promotionRepository).devrementUtilisation(promoId);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("annulerPourEvenementAnnule")
-    class AnnulerPourEvenementAnnule {
+    // expirer
+    // =====================================================================
+    @Test
+    void expirer_introuvable_retourneFalse() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
 
-        private Event eventAnnule() {
-            return Event.builder().id(eventId).statut(StatusEvenment.CANCELLED).build();
-        }
+        assertFalse(service.expirer(reservationId));
+    }
 
-        @Test
-        void introuvable_retourneFalse() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+    @Test
+    void expirer_statutConfirmed_retourneFalse_etNeChangeRien() {
+        expirerRefuse(StatutReservation.CONFIRMED);
+    }
 
-            assertThat(service.annulerPourEvenementAnnule(reservationId)).isFalse();
-        }
+    @Test
+    void expirer_statutCancelled_retourneFalse_etNeChangeRien() {
+        expirerRefuse(StatutReservation.CANCELLED);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = "PENDING_PAYMENT")
-        void statutDifferentDePending_retourneFalse(StatutReservation statut) {
-            Reservation r = reservation(statut, now.plusMinutes(10), promoValide10pct(), eventAnnule());
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+    @Test
+    void expirer_statutExpired_retourneFalse_etNeChangeRien() {
+        expirerRefuse(StatutReservation.EXPIRED);
+    }
 
-            assertThat(service.annulerPourEvenementAnnule(reservationId)).isFalse();
+    @Test
+    void expirer_statutRefunded_retourneFalse_etNeChangeRien() {
+        expirerRefuse(StatutReservation.REFUNDED);
+    }
 
-            assertThat(r.getStatut()).isEqualTo(statut);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+    @Test
+    void expirer_pasEncoreExpiree_retourneFalse() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(5), PromoValide10pct(), event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "CANCELLED")
-        void eventPasAnnule_retourneFalse(StatusEvenment statutEvent) {
-            Event ev = Event.builder().id(eventId).statut(statutEvent).build();
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, ev);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        assertFalse(service.expirer(reservationId));
 
-            assertThat(service.annulerPourEvenementAnnule(reservationId)).isFalse();
+        assertEquals(StatutReservation.PENDING_PAYMENT, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.PENDING_PAYMENT);
-        }
+    @Test
+    void expirer_expireeSansPromo_passeEnExpired() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.minusMinutes(1), null, event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
 
-        @Test
-        void nominalSansPromo_passeEnCancelled() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, eventAnnule());
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        assertTrue(service.expirer(reservationId));
 
-            assertThat(service.annulerPourEvenementAnnule(reservationId)).isTrue();
+        assertEquals(StatutReservation.EXPIRED, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.CANCELLED);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+    @Test
+    void expirer_expireeAvecPromo_passeEnExpired_etRendLUtilisation() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.minusMinutes(1), PromoValide10pct(), event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
 
-        @Test
-        void nominalAvecPromo_passeEnCancelled_etRendLUtilisation() {
-            Reservation r = reservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), promoValide10pct(), eventAnnule());
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+        assertTrue(service.expirer(reservationId));
 
-            assertThat(service.annulerPourEvenementAnnule(reservationId)).isTrue();
+        assertEquals(StatutReservation.EXPIRED, r.getStatut());
+        verify(promotionRepository).devrementUtilisation(promoId);
+    }
 
-            assertThat(r.getStatut()).isEqualTo(StatutReservation.CANCELLED);
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
+    // =====================================================================
+    // annulerPourEvenementAnnule
+    // =====================================================================
+    @Test
+    void annulerPourEvenementAnnule_introuvable_retourneFalse() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+
+        assertFalse(service.annulerPourEvenementAnnule(reservationId));
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_statutConfirmed_retourneFalse() {
+        annulerPourEvenementRefuseStatut(StatutReservation.CONFIRMED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_statutCancelled_retourneFalse() {
+        annulerPourEvenementRefuseStatut(StatutReservation.CANCELLED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_statutExpired_retourneFalse() {
+        annulerPourEvenementRefuseStatut(StatutReservation.EXPIRED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_statutRefunded_retourneFalse() {
+        annulerPourEvenementRefuseStatut(StatutReservation.REFUNDED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_eventDraft_retourneFalse() {
+        annulerPourEvenementRefuseEvent(StatusEvenment.DRAFT);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_eventPublished_retourneFalse() {
+        annulerPourEvenementRefuseEvent(StatusEvenment.PUBLISHED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_eventCompleted_retourneFalse() {
+        annulerPourEvenementRefuseEvent(StatusEvenment.COMPLETED);
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_nominalSansPromo_passeEnCancelled() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, EventAnnule());
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertTrue(service.annulerPourEvenementAnnule(reservationId));
+
+        assertEquals(StatutReservation.CANCELLED, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
+
+    @Test
+    void annulerPourEvenementAnnule_nominalAvecPromo_passeEnCancelled_etRendLUtilisation() {
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), PromoValide10pct(), EventAnnule());
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertTrue(service.annulerPourEvenementAnnule(reservationId));
+
+        assertEquals(StatutReservation.CANCELLED, r.getStatut());
+        verify(promotionRepository).devrementUtilisation(promoId);
+    }
+
+    // =====================================================================
+    // methodes utilitaires (evitent de repeter le meme code dans plusieurs tests)
+    // =====================================================================
+    private Event EventAnnule() {
+        return Event.builder().id(eventId).statut(StatusEvenment.CANCELLED).build();
+    }
+
+    private void createEventNonPublie(StatusEvenment statut) {
+        event.setStatut(statut);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.create(eventId, OneRequest(null, OneLigne(vipId, 1))));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    private void annulerRefuse(StatutReservation statut) {
+        Reservation r = OneReservation(statut, now.plusMinutes(10), PromoValide10pct(), event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertThrows(BusinessRuleException.class, () -> service.annuler(reservationId, clientId));
+
+        assertEquals(statut, r.getStatut()); // statut inchange
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
+
+    private void expirerRefuse(StatutReservation statut) {
+        Reservation r = OneReservation(statut, now.minusMinutes(5), PromoValide10pct(), event);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertFalse(service.expirer(reservationId));
+
+        assertEquals(statut, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
+
+    private void annulerPourEvenementRefuseStatut(StatutReservation statut) {
+        Reservation r = OneReservation(statut, now.plusMinutes(10), PromoValide10pct(), EventAnnule());
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertFalse(service.annulerPourEvenementAnnule(reservationId));
+
+        assertEquals(statut, r.getStatut());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
+
+    private void annulerPourEvenementRefuseEvent(StatusEvenment statutEvent) {
+        Event ev = Event.builder().id(eventId).statut(statutEvent).build();
+        Reservation r = OneReservation(StatutReservation.PENDING_PAYMENT, now.plusMinutes(10), null, ev);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(r));
+
+        assertFalse(service.annulerPourEvenementAnnule(reservationId));
+
+        assertEquals(StatutReservation.PENDING_PAYMENT, r.getStatut());
     }
 }

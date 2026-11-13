@@ -10,13 +10,13 @@ import com.eventPro.eventPro.model.Reservation;
 import com.eventPro.eventPro.repository.BilletRepository;
 import com.eventPro.eventPro.repository.ClientRepository;
 import com.eventPro.eventPro.repository.ReservationRepository;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -26,28 +26,33 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT)
 class TicketServiceTest {
 
-    @Mock private BilletRepository billetRepository;
-    @Mock private ReservationRepository reservationRepository;
-    @Mock private ClientRepository clientRepository;
-    @Mock private TicketMapper ticketMapper;
+    @Mock
+    private BilletRepository billetRepository;
+    @Mock
+    private ReservationRepository reservationRepository;
+    @Mock
+    private ClientRepository clientRepository;
+    @Mock
+    private TicketMapper ticketMapper;
 
-    @InjectMocks private TicketService service;
+    @InjectMocks
+    private TicketService service;
 
     private final UUID reservationId = UUID.randomUUID();
     private final UUID clientId = UUID.randomUUID();
+    private final Pageable pageable = PageRequest.of(0, 10);
 
-    private Reservation reservationDe(UUID proprietaire) {
+    // ---------- petit helper (comme OneUser() avant) ----------
+    // reservation qui appartient au client "proprietaire"
+    private Reservation OneReservation(UUID proprietaire) {
         Client client = mock(Client.class);
         when(client.getId()).thenReturn(proprietaire);
         Reservation reservation = mock(Reservation.class);
@@ -56,88 +61,90 @@ class TicketServiceTest {
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listByReservation")
-    class ListByReservation {
+    // listByReservation
+    // =====================================================================
+    @Test
+    void listByReservation_reservationIntrouvable_ResourceNotFound() {
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.listByReservation(reservationId, clientId));
 
-            assertThatThrownBy(() -> service.listByReservation(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(reservationId.toString());
+        assertTrue(ex.getMessage().contains(reservationId.toString()));
+        verify(billetRepository, never()).findByLigneReservationReservationId(any());
+    }
 
-            verify(billetRepository, never()).findByLigneReservationReservationId(any());
-        }
+    @Test
+    void listByReservation_pasLeProprietaire_Forbidden() {
+        Reservation reservation = OneReservation(UUID.randomUUID()); // appartient a un autre client
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
 
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation reservation = reservationDe(UUID.randomUUID());
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        assertThrows(ForbiddenOperationException.class, () -> service.listByReservation(reservationId, clientId));
 
-            assertThatThrownBy(() -> service.listByReservation(reservationId, clientId))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        verify(billetRepository, never()).findByLigneReservationReservationId(any());
+    }
 
-            verify(billetRepository, never()).findByLigneReservationReservationId(any());
-        }
+    @Test
+    void listByReservation_nominal_retourneLesBilletsMappes() {
+        // ARRANGE
+        Reservation reservation = OneReservation(clientId);
+        Billet b1 = mock(Billet.class);
+        Billet b2 = mock(Billet.class);
+        TicketResponse t1 = mock(TicketResponse.class);
+        TicketResponse t2 = mock(TicketResponse.class);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of(b1, b2));
+        when(ticketMapper.toResponse(b1)).thenReturn(t1);
+        when(ticketMapper.toResponse(b2)).thenReturn(t2);
 
-        @Test
-        void nominal_retourneLesBilletsMappes() {
-            Reservation reservation = reservationDe(clientId);
-            Billet b1 = mock(Billet.class);
-            Billet b2 = mock(Billet.class);
-            TicketResponse t1 = mock(TicketResponse.class);
-            TicketResponse t2 = mock(TicketResponse.class);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
-            when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of(b1, b2));
-            when(ticketMapper.toResponse(b1)).thenReturn(t1);
-            when(ticketMapper.toResponse(b2)).thenReturn(t2);
+        // ACT
+        List<TicketResponse> result = service.listByReservation(reservationId, clientId);
 
-            assertThat(service.listByReservation(reservationId, clientId)).containsExactly(t1, t2);
-        }
+        // ASSERT
+        assertEquals(2, result.size());
+        assertSame(t1, result.get(0));
+        assertSame(t2, result.get(1));
+    }
 
-        @Test
-        void aucunBillet_retourneListeVide() {
-            Reservation reservation = reservationDe(clientId);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
-            when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of());
+    @Test
+    void listByReservation_aucunBillet_retourneListeVide() {
+        Reservation reservation = OneReservation(clientId);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of());
 
-            assertThat(service.listByReservation(reservationId, clientId)).isEmpty();
-        }
+        assertTrue(service.listByReservation(reservationId, clientId).isEmpty());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listByClient")
-    class ListByClient {
+    // listByClient
+    // =====================================================================
+    @Test
+    void listByClient_clientIntrouvable_ResourceNotFound() {
+        when(clientRepository.existsById(clientId)).thenReturn(false);
 
-        private final Pageable pageable = PageRequest.of(0, 10);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.listByClient(clientId, pageable));
 
-        @Test
-        void clientIntrouvable_leveResourceNotFound() {
-            when(clientRepository.existsById(clientId)).thenReturn(false);
+        assertTrue(ex.getMessage().contains(clientId.toString()));
+        verify(billetRepository, never()).findByLigneReservationReservationClientId(any(), any());
+    }
 
-            assertThatThrownBy(() -> service.listByClient(clientId, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(clientId.toString());
+    @Test
+    void listByClient_nominal_retourneLaPageMappee() {
+        // ARRANGE
+        Billet b1 = mock(Billet.class);
+        TicketResponse t1 = mock(TicketResponse.class);
+        when(clientRepository.existsById(clientId)).thenReturn(true);
+        when(billetRepository.findByLigneReservationReservationClientId(clientId, pageable))
+                .thenReturn(new PageImpl<>(List.of(b1), pageable, 1));
+        when(ticketMapper.toResponse(b1)).thenReturn(t1);
 
-            verify(billetRepository, never()).findByLigneReservationReservationClientId(any(), any());
-        }
+        // ACT
+        Page<TicketResponse> page = service.listByClient(clientId, pageable);
 
-        @Test
-        void nominal_retourneLaPageMappee() {
-            Billet b1 = mock(Billet.class);
-            TicketResponse t1 = mock(TicketResponse.class);
-            when(clientRepository.existsById(clientId)).thenReturn(true);
-            when(billetRepository.findByLigneReservationReservationClientId(clientId, pageable))
-                    .thenReturn(new PageImpl<>(List.of(b1), pageable, 1));
-            when(ticketMapper.toResponse(b1)).thenReturn(t1);
-
-            Page<TicketResponse> page = service.listByClient(clientId, pageable);
-
-            assertThat(page.getContent()).containsExactly(t1);
-            assertThat(page.getTotalElements()).isEqualTo(1);
-        }
+        // ASSERT
+        assertEquals(1, page.getContent().size());
+        assertSame(t1, page.getContent().get(0));
+        assertEquals(1, page.getTotalElements());
     }
 }

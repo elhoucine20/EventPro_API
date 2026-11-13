@@ -18,14 +18,14 @@ import com.eventPro.eventPro.repository.AdministrateurRepository;
 import com.eventPro.eventPro.repository.RemboursementRepository;
 import com.eventPro.eventPro.repository.ReservationRepository;
 import com.eventPro.eventPro.repository.UserRepository;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -35,182 +35,190 @@ import org.springframework.data.jpa.domain.Specification;
 import java.util.List;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AdminServiceTest {
 
-    @Mock private AdministrateurRepository administrateurRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private ReservationRepository reservationRepository;
-    @Mock private RemboursementRepository remboursementRepository;
-    @Mock private RemboursementService remboursementService;
-    @Mock private UserMapper userMapper;
-    @Mock private ReservationMapper reservationMapper;
-    @Mock private RemboursementMapper remboursementMapper;
+    @Mock
+    private AdministrateurRepository administrateurRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private ReservationRepository reservationRepository;
+    @Mock
+    private RemboursementRepository remboursementRepository;
+    @Mock
+    private RemboursementService remboursementService;
+    @Mock
+    private UserMapper userMapper;
+    @Mock
+    private ReservationMapper reservationMapper;
+    @Mock
+    private RemboursementMapper remboursementMapper;
 
-    @InjectMocks private AdminService service;
+    @InjectMocks
+    private AdminService service;
 
     private final UUID adminId = UUID.randomUUID();
     private final Pageable pageable = PageRequest.of(0, 20);
 
     // =====================================================================
-    @Nested
-    @DisplayName("admin inconnu : aucune methode ne touche aux donnees")
-    class AdminInconnu {
+    // admin inconnu : aucune methode ne touche aux donnees
+    // =====================================================================
+    @Test
+    void listUsers_adminInconnu_ResourceNotFound() {
+        when(administrateurRepository.existsById(adminId)).thenReturn(false);
 
-        @Test
-        void listUsers() {
-            when(administrateurRepository.existsById(adminId)).thenReturn(false);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.listUsers(adminId, null, pageable));
 
-            assertThatThrownBy(() -> service.listUsers(adminId, null, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(adminId.toString());
+        assertTrue(ex.getMessage().contains(adminId.toString()));
+        verifyNoInteractions(userRepository);
+    }
 
-            verifyNoInteractions(userRepository);
-        }
+    @Test
+    void listReservations_adminInconnu_ResourceNotFound() {
+        when(administrateurRepository.existsById(adminId)).thenReturn(false);
 
-        @Test
-        void listReservations() {
-            when(administrateurRepository.existsById(adminId)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listReservations(adminId, null, null, null, pageable));
 
-            assertThatThrownBy(() -> service.listReservations(adminId, null, null, null, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(reservationRepository);
+    }
 
-            verifyNoInteractions(reservationRepository);
-        }
+    @Test
+    void listRemboursements_adminInconnu_ResourceNotFound() {
+        when(administrateurRepository.existsById(adminId)).thenReturn(false);
 
-        @Test
-        void listRemboursements() {
-            when(administrateurRepository.existsById(adminId)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.listRemboursements(adminId, StatutRemboursement.REJECTED, pageable));
 
-            assertThatThrownBy(() -> service.listRemboursements(adminId, StatutRemboursement.REJECTED, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(remboursementRepository);
+    }
 
-            verifyNoInteractions(remboursementRepository);
-        }
+    @Test
+    void approuverRemboursement_adminInconnu_ResourceNotFound() {
+        when(administrateurRepository.existsById(adminId)).thenReturn(false);
 
-        @Test
-        void approuverRemboursement() {
-            when(administrateurRepository.existsById(adminId)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.approuverRemboursement(adminId, UUID.randomUUID()));
 
-            assertThatThrownBy(() -> service.approuverRemboursement(adminId, UUID.randomUUID()))
-                    .isInstanceOf(ResourceNotFoundException.class);
-
-            verifyNoInteractions(remboursementService);
-        }
+        verifyNoInteractions(remboursementService);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listUsers")
-    class ListUsers {
+    // listUsers
+    // =====================================================================
+    @Test
+    void listUsers_sansRole_retourneTousLesUtilisateurs() {
+        // ARRANGE
+        User u1 = mock(User.class);
+        UserResponse r1 = mock(UserResponse.class);
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(userRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(u1), pageable, 1));
+        when(userMapper.toResponse(u1)).thenReturn(r1);
 
-        @Test
-        void sansRole_retourneTousLesUtilisateurs() {
-            User u1 = mock(User.class);
-            UserResponse r1 = mock(UserResponse.class);
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(userRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(u1), pageable, 1));
-            when(userMapper.toResponse(u1)).thenReturn(r1);
+        // ACT
+        Page<UserResponse> page = service.listUsers(adminId, null, pageable);
 
-            Page<UserResponse> page = service.listUsers(adminId, null, pageable);
+        // ASSERT
+        assertEquals(1, page.getContent().size());
+        assertSame(r1, page.getContent().get(0));
+        verify(userRepository, never()).findByRole(any(), any());
+    }
 
-            assertThat(page.getContent()).containsExactly(r1);
-            verify(userRepository, never()).findByRole(any(), any());
-        }
+    @Test
+    void listUsers_avecRole_filtreParRole() {
+        // ARRANGE
+        User u1 = mock(User.class);
+        UserResponse r1 = mock(UserResponse.class);
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(userRepository.findByRole(RoleUser.CLIENT, pageable)).thenReturn(new PageImpl<>(List.of(u1), pageable, 1));
+        when(userMapper.toResponse(u1)).thenReturn(r1);
 
-        @Test
-        void avecRole_filtreParRole() {
-            User u1 = mock(User.class);
-            UserResponse r1 = mock(UserResponse.class);
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(userRepository.findByRole(RoleUser.CLIENT, pageable)).thenReturn(new PageImpl<>(List.of(u1), pageable, 1));
-            when(userMapper.toResponse(u1)).thenReturn(r1);
+        // ACT
+        Page<UserResponse> page = service.listUsers(adminId, RoleUser.CLIENT, pageable);
 
-            Page<UserResponse> page = service.listUsers(adminId, RoleUser.CLIENT, pageable);
-
-            assertThat(page.getContent()).containsExactly(r1);
-            verify(userRepository, never()).findAll(any(Pageable.class));
-        }
+        // ASSERT
+        assertEquals(1, page.getContent().size());
+        assertSame(r1, page.getContent().get(0));
+        verify(userRepository, never()).findAll(any(Pageable.class));
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listReservations")
-    class ListReservations {
+    // listReservations
+    // =====================================================================
+    @Test
+    void listReservations_avecFiltres_retourneLaPageMappee() {
+        // ARRANGE
+        Reservation res = mock(Reservation.class);
+        ReservationResponse resp = mock(ReservationResponse.class);
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(reservationRepository.findAll(ArgumentMatchers.<Specification<Reservation>>any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(res), pageable, 1));
+        when(reservationMapper.toResponse(res)).thenReturn(resp);
 
-        @Test
-        void avecFiltres_retourneLaPageMappee() {
-            Reservation res = mock(Reservation.class);
-            ReservationResponse resp = mock(ReservationResponse.class);
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(reservationRepository.findAll(ArgumentMatchers.<Specification<Reservation>>any(), eq(pageable)))
-                    .thenReturn(new PageImpl<>(List.of(res), pageable, 1));
-            when(reservationMapper.toResponse(res)).thenReturn(resp);
+        // ACT
+        Page<ReservationResponse> page = service.listReservations(
+                adminId, StatutReservation.REFUNDED, UUID.randomUUID(), UUID.randomUUID(), pageable);
 
-            Page<ReservationResponse> page = service.listReservations(
-                    adminId, StatutReservation.REFUNDED, UUID.randomUUID(), UUID.randomUUID(), pageable);
+        // ASSERT
+        assertEquals(1, page.getContent().size());
+        assertSame(resp, page.getContent().get(0));
+    }
 
-            assertThat(page.getContent()).containsExactly(resp);
-        }
+    @Test
+    void listReservations_sansAucunFiltre_fonctionneAussi() {
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(reservationRepository.findAll(ArgumentMatchers.<Specification<Reservation>>any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
-        @Test
-        void sansAucunFiltre_fonctionneAussi() {
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(reservationRepository.findAll(ArgumentMatchers.<Specification<Reservation>>any(), eq(pageable)))
-                    .thenReturn(new PageImpl<>(List.of(), pageable, 0));
-
-            assertThat(service.listReservations(adminId, null, null, null, pageable).getContent()).isEmpty();
-        }
+        assertTrue(service.listReservations(adminId, null, null, null, pageable).getContent().isEmpty());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listRemboursements / approuverRemboursement")
-    class Remboursements {
+    // listRemboursements / approuverRemboursement
+    // =====================================================================
+    @Test
+    void listRemboursements_filtreParStatut() {
+        // ARRANGE
+        Remboursement r = mock(Remboursement.class);
+        RemboursementResponse resp = mock(RemboursementResponse.class);
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(remboursementRepository.findByStatut(StatutRemboursement.REJECTED, pageable))
+                .thenReturn(new PageImpl<>(List.of(r), pageable, 1));
+        when(remboursementMapper.toResponse(r)).thenReturn(resp);
 
-        @Test
-        void listRemboursements_filtreParStatut() {
-            Remboursement r = mock(Remboursement.class);
-            RemboursementResponse resp = mock(RemboursementResponse.class);
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(remboursementRepository.findByStatut(StatutRemboursement.REJECTED, pageable))
-                    .thenReturn(new PageImpl<>(List.of(r), pageable, 1));
-            when(remboursementMapper.toResponse(r)).thenReturn(resp);
+        // ACT
+        Page<RemboursementResponse> page = service.listRemboursements(adminId, StatutRemboursement.REJECTED, pageable);
 
-            Page<RemboursementResponse> page = service.listRemboursements(adminId, StatutRemboursement.REJECTED, pageable);
+        // ASSERT
+        assertEquals(1, page.getContent().size());
+        assertSame(resp, page.getContent().get(0));
+    }
 
-            assertThat(page.getContent()).containsExactly(resp);
-        }
+    @Test
+    void approuverRemboursement_delegueAuServiceDeRemboursement() {
+        UUID remboursementId = UUID.randomUUID();
+        RemboursementResponse resp = mock(RemboursementResponse.class);
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(remboursementService.approuverExceptionnellement(remboursementId)).thenReturn(resp);
 
-        @Test
-        void approuverRemboursement_delegueAuServiceDeRemboursement() {
-            UUID remboursementId = UUID.randomUUID();
-            RemboursementResponse resp = mock(RemboursementResponse.class);
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(remboursementService.approuverExceptionnellement(remboursementId)).thenReturn(resp);
+        assertSame(resp, service.approuverRemboursement(adminId, remboursementId));
+    }
 
-            assertThat(service.approuverRemboursement(adminId, remboursementId)).isSameAs(resp);
-        }
+    @Test
+    void approuverRemboursement_propageLErreurMetier() {
+        UUID remboursementId = UUID.randomUUID();
+        when(administrateurRepository.existsById(adminId)).thenReturn(true);
+        when(remboursementService.approuverExceptionnellement(remboursementId))
+                .thenThrow(new BusinessRuleException("deja approuve"));
 
-        @Test
-        void approuverRemboursement_propageLErreurMetier() {
-            UUID remboursementId = UUID.randomUUID();
-            when(administrateurRepository.existsById(adminId)).thenReturn(true);
-            when(remboursementService.approuverExceptionnellement(remboursementId))
-                    .thenThrow(new BusinessRuleException("deja approuve"));
-
-            assertThatThrownBy(() -> service.approuverRemboursement(adminId, remboursementId))
-                    .isInstanceOf(BusinessRuleException.class);
-        }
+        assertThrows(BusinessRuleException.class, () -> service.approuverRemboursement(adminId, remboursementId));
     }
 }

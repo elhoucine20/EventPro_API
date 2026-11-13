@@ -12,15 +12,13 @@ import com.eventPro.eventPro.model.Organisateur;
 import com.eventPro.eventPro.model.enums.StatusEvenment;
 import com.eventPro.eventPro.repository.CategorieBilletRepository;
 import com.eventPro.eventPro.repository.EventRepository;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -28,362 +26,402 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class CategorieBilletServiceTest {
 
-    @Mock private EventRepository eventRepository;
-    @Mock private CategorieBilletMapper categorieBilletMapper;
-    @Mock private CategorieBilletRepository categorieBilletRepository;
-    @Mock private DisponibiliteService disponibiliteService;
+    @Mock
+    private EventRepository eventRepository;
+    @Mock
+    private CategorieBilletMapper categorieBilletMapper;
+    @Mock
+    private CategorieBilletRepository categorieBilletRepository;
+    @Mock
+    private DisponibiliteService disponibiliteService;
 
-    @InjectMocks private CategorieBilletSercice service;   // (renomme en CategorieBilletService si tu corriges la faute)
+    @InjectMocks
+    private CategorieBilletSercice service; // (renomme en CategorieBilletService si tu corriges la faute)
 
     private final UUID eventId = UUID.randomUUID();
     private final UUID orgaId = UUID.randomUUID();
     private final UUID categorieId = UUID.randomUUID();
 
-    // ================= helpers =================
-
-    private CategorieBilletRequest request(String nom, int quantite, int quota, UUID owner) {
-        CategorieBilletRequest r = mock(CategorieBilletRequest.class);
-        lenient().when(r.nom()).thenReturn(nom);
-        lenient().when(r.quantiteTotale()).thenReturn(quantite);
-        lenient().when(r.quotaMaxParClient()).thenReturn(quota);
-        lenient().when(r.organisateurId()).thenReturn(owner);
-        return r;
-    }
-
-    private CategorieBilletRequest requestValide() {
-        return request("VIP", 10, 4, orgaId);
-    }
-
-    private Event event(StatusEvenment statut, UUID ownerId) {
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    private Event OneEvent(StatusEvenment statut, UUID ownerId) {
         Organisateur orga = Organisateur.builder().id(ownerId).build();
         return Event.builder().id(eventId).statut(statut).organisateur(orga).build();
     }
 
-    private CategorieBillet categorie(Event event, String nom) {
+    private CategorieBillet OneCategorie(Event event, String nom) {
         return CategorieBillet.builder().id(categorieId).nom(nom).event(event)
                 .prixUnitaire(new BigDecimal("100.00")).quantiteTotale(10L).quotaMaxParClient(4).build();
     }
-    // =====================================================================
-    @Nested
-    @DisplayName("create")
-    class Create {
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"DRAFT", "PUBLISHED"})
-        void nominal_lieLaCategorieALEvent_etPlacesEgalesALaQuantite(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            CategorieBilletRequest request = requestValide();
-            CategorieBillet categorie = categorie(event, "VIP");
-            CategorieBillet saved = categorie(event, "VIP");
-            CategorieBilletResponse response = mock(CategorieBilletResponse.class);
+    private CategorieBilletRequest OneRequest(String nom, int quantite, int quota, UUID owner) {
+        CategorieBilletRequest r = mock(CategorieBilletRequest.class);
+        when(r.nom()).thenReturn(nom);
+        when(r.quantiteTotale()).thenReturn(quantite);
+        when(r.quotaMaxParClient()).thenReturn(quota);
+        when(r.organisateurId()).thenReturn(owner);
+        return r;
+    }
 
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "VIP")).thenReturn(false);
-            when(categorieBilletMapper.toEntity(request)).thenReturn(categorie);
-            when(categorieBilletRepository.save(categorie)).thenReturn(saved);
-            when(categorieBilletMapper.toResponse(saved, 10)).thenReturn(response);
-
-            CategorieBilletResponse result = service.create(eventId, request);
-
-            assertThat(result).isSameAs(response);
-            assertThat(categorie.getEvent()).isSameAs(event);
-        }
-
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.create(eventId, requestValide()))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(eventId.toString());
-
-            verify(categorieBilletRepository, never()).save(any());
-        }
-
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.DRAFT, UUID.randomUUID());
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-
-            assertThatThrownBy(() -> service.create(eventId, requestValide()))
-                    .isInstanceOf(ForbiddenOperationException.class);
-
-            verify(categorieBilletRepository, never()).save(any());
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"CANCELLED", "COMPLETED"})
-        void eventAnnuleOuTermine_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-
-            assertThatThrownBy(() -> service.create(eventId, requestValide()))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletRepository, never()).save(any());
-        }
-
-        @Test
-        void quotaSuperieurALaQuantite_leveBusinessRule_sansVerifierLeNom() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-
-            assertThatThrownBy(() -> service.create(eventId, request("VIP", 5, 10, orgaId)))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletRepository, never()).existsByEventIdAndNomIgnoreCase(any(), anyString());
-            verify(categorieBilletRepository, never()).save(any());
-        }
-
-        @Test
-        void nomDejaUtilisePourCetEvent_leveBusinessRule() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "VIP")).thenReturn(true);
-
-            assertThatThrownBy(() -> service.create(eventId, requestValide()))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletRepository, never()).save(any());
-        }
+    private CategorieBilletRequest RequestValide() {
+        return OneRequest("VIP", 10, 4, orgaId);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listByEvent")
-    class ListByEvent {
+    // create
+    // =====================================================================
+    @Test
+    void create_eventDraft_lieLaCategorieALEvent_etPlacesEgalesALaQuantite() {
+        createNominal(StatusEvenment.DRAFT);
+    }
 
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+    @Test
+    void create_eventPublished_lieLaCategorieALEvent_etPlacesEgalesALaQuantite() {
+        createNominal(StatusEvenment.PUBLISHED);
+    }
 
-            assertThatThrownBy(() -> service.listByEvent(eventId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+    @Test
+    void create_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "PUBLISHED")
-        void eventNonPublie_estInvisible_404(StatusEvenment statut) {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event(statut, orgaId)));
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.create(eventId, RequestValide()));
 
-            assertThatThrownBy(() -> service.listByEvent(eventId))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        assertTrue(ex.getMessage().contains(eventId.toString()));
+        verify(categorieBilletRepository, never()).save(any());
+    }
 
-            verify(categorieBilletRepository, never()).findByEventId(any());
-        }
+    @Test
+    void create_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.DRAFT, UUID.randomUUID()); // un autre organisateur
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @Test
-        void nominal_retourneChaqueCategorieAvecSesPlaces() {
-            UUID id1 = UUID.randomUUID();
-            UUID id2 = UUID.randomUUID();
-            CategorieBillet c1 = mock(CategorieBillet.class);
-            CategorieBillet c2 = mock(CategorieBillet.class);
-            when(c1.getId()).thenReturn(id1);
-            when(c2.getId()).thenReturn(id2);
-            List<CategorieBillet> categories = List.of(c1, c2);
-            CategorieBilletResponse r1 = mock(CategorieBilletResponse.class);
-            CategorieBilletResponse r2 = mock(CategorieBilletResponse.class);
+        assertThrows(ForbiddenOperationException.class, () -> service.create(eventId, RequestValide()));
 
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event(StatusEvenment.PUBLISHED, orgaId)));
-            when(categorieBilletRepository.findByEventId(eventId)).thenReturn(categories);
-            when(disponibiliteService.placesParCategorie(eventId, categories)).thenReturn(Map.of(id1, 8, id2, 0));
-            when(categorieBilletMapper.toResponse(c1, 8)).thenReturn(r1);
-            when(categorieBilletMapper.toResponse(c2, 0)).thenReturn(r2);
+        verify(categorieBilletRepository, never()).save(any());
+    }
 
-            assertThat(service.listByEvent(eventId)).containsExactly(r1, r2);
-        }
+    @Test
+    void create_eventCancelled_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.CANCELLED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @Test
-        void aucuneCategorie_retourneListeVide() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event(StatusEvenment.PUBLISHED, orgaId)));
-            when(categorieBilletRepository.findByEventId(eventId)).thenReturn(List.of());
-            when(disponibiliteService.placesParCategorie(eventId, List.of())).thenReturn(Map.of());
+        assertThrows(BusinessRuleException.class, () -> service.create(eventId, RequestValide()));
 
-            assertThat(service.listByEvent(eventId)).isEmpty();
-        }
+        verify(categorieBilletRepository, never()).save(any());
+    }
+
+    @Test
+    void create_eventCompleted_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.COMPLETED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+
+        assertThrows(BusinessRuleException.class, () -> service.create(eventId, RequestValide()));
+
+        verify(categorieBilletRepository, never()).save(any());
+    }
+
+    @Test
+    void create_quotaSuperieurALaQuantite_BusinessRule_sansVerifierLeNom() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+
+        // quota 10 > quantite 5
+        assertThrows(BusinessRuleException.class, () -> service.create(eventId, OneRequest("VIP", 5, 10, orgaId)));
+
+        verify(categorieBilletRepository, never()).existsByEventIdAndNomIgnoreCase(any(), anyString());
+        verify(categorieBilletRepository, never()).save(any());
+    }
+
+    @Test
+    void create_nomDejaUtilisePourCetEvent_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "VIP")).thenReturn(true);
+
+        assertThrows(BusinessRuleException.class, () -> service.create(eventId, RequestValide()));
+
+        verify(categorieBilletRepository, never()).save(any());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("update")
-    class Update {
+    // listByEvent
+    // =====================================================================
+    @Test
+    void listByEvent_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @Test
-        void categorieIntrouvable_leveResourceNotFound() {
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.listByEvent(eventId));
+    }
 
-            assertThatThrownBy(() -> service.update(categorieId, requestValide()))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(categorieId.toString());
-        }
+    @Test
+    void listByEvent_eventDraft_estInvisible_404() {
+        listInvisible(StatusEvenment.DRAFT);
+    }
 
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.DRAFT, UUID.randomUUID());
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
+    @Test
+    void listByEvent_eventCancelled_estInvisible_404() {
+        listInvisible(StatusEvenment.CANCELLED);
+    }
 
-            assertThatThrownBy(() -> service.update(categorieId, requestValide()))
-                    .isInstanceOf(ForbiddenOperationException.class);
+    @Test
+    void listByEvent_eventCompleted_estInvisible_404() {
+        listInvisible(StatusEvenment.COMPLETED);
+    }
 
-            verify(categorieBilletMapper, never()).updateEntity(any(), any());
-        }
+    @Test
+    void listByEvent_nominal_retourneChaqueCategorieAvecSesPlaces() {
+        // ARRANGE : 2 categories avec des ids differents
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        CategorieBillet c1 = CategorieBillet.builder().id(id1).nom("VIP").build();
+        CategorieBillet c2 = CategorieBillet.builder().id(id2).nom("Standard").build();
+        List<CategorieBillet> categories = List.of(c1, c2);
+        CategorieBilletResponse r1 = mock(CategorieBilletResponse.class);
+        CategorieBilletResponse r2 = mock(CategorieBilletResponse.class);
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"CANCELLED", "COMPLETED"})
-        void eventAnnuleOuTermine_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.findByEventId(eventId)).thenReturn(categories);
+        when(disponibiliteService.placesParCategorie(eventId, categories)).thenReturn(Map.of(id1, 8, id2, 0));
+        when(categorieBilletMapper.toResponse(c1, 8)).thenReturn(r1);
+        when(categorieBilletMapper.toResponse(c2, 0)).thenReturn(r2);
 
-            assertThatThrownBy(() -> service.update(categorieId, requestValide()))
-                    .isInstanceOf(BusinessRuleException.class);
+        // ACT
+        List<CategorieBilletResponse> result = service.listByEvent(eventId);
 
-            verify(categorieBilletMapper, never()).updateEntity(any(), any());
-        }
+        // ASSERT
+        assertEquals(2, result.size());
+        assertSame(r1, result.get(0));
+        assertSame(r2, result.get(1));
+    }
 
-        @Test
-        void quotaSuperieurALaQuantite_leveBusinessRule() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
+    @Test
+    void listByEvent_aucuneCategorie_listeVide() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.findByEventId(eventId)).thenReturn(List.of());
+        when(disponibiliteService.placesParCategorie(eventId, List.of())).thenReturn(Map.of());
 
-            assertThatThrownBy(() -> service.update(categorieId, request("VIP", 5, 10, orgaId)))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletMapper, never()).updateEntity(any(), any());
-        }
-
-        @Test
-        void nomChangeEtDejaPris_leveBusinessRule() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
-            when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "Standard")).thenReturn(true);
-
-            assertThatThrownBy(() -> service.update(categorieId, request("Standard", 10, 4, orgaId)))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(categorieBilletMapper, never()).updateEntity(any(), any());
-        }
-
-        @Test
-        void nomChangeEtLibre_metAJourEtRetourneLesPlaces() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            CategorieBillet categorie = categorie(event, "VIP");
-            CategorieBilletRequest request = request("Premium", 10, 4, orgaId);
-            CategorieBilletResponse response = mock(CategorieBilletResponse.class);
-
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
-            when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "Premium")).thenReturn(false);
-            when(disponibiliteService.placesParCategorie(eventId, List.of(categorie))).thenReturn(Map.of(categorieId, 3));
-            when(categorieBilletMapper.toResponse(categorie, 3)).thenReturn(response);
-
-            CategorieBilletResponse result = service.update(categorieId, request);
-
-            assertThat(result).isSameAs(response);
-            verify(categorieBilletMapper).updateEntity(request, categorie);
-        }
-
-        @Test
-        void memeNomAvecCasseDifferente_neVerifiePasLUnicite() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            CategorieBillet categorie = categorie(event, "VIP");
-            CategorieBilletRequest request = request("vip", 10, 4, orgaId);
-            CategorieBilletResponse response = mock(CategorieBilletResponse.class);
-
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
-            when(disponibiliteService.placesParCategorie(eventId, List.of(categorie))).thenReturn(Map.of(categorieId, 3));
-            when(categorieBilletMapper.toResponse(categorie, 3)).thenReturn(response);
-
-            assertThat(service.update(categorieId, request)).isSameAs(response);
-
-            verify(categorieBilletRepository, never()).existsByEventIdAndNomIgnoreCase(any(), anyString());
-            verify(categorieBilletMapper).updateEntity(request, categorie);
-        }
+        assertTrue(service.listByEvent(eventId).isEmpty());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("delete")
-    class Delete {
+    // update
+    // =====================================================================
+    @Test
+    void update_categorieIntrouvable_ResourceNotFound() {
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.empty());
 
-        @Test
-        void categorieIntrouvable_leveResourceNotFound() {
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.empty());
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.update(categorieId, RequestValide()));
 
-            assertThatThrownBy(() -> service.delete(categorieId, orgaId))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        assertTrue(ex.getMessage().contains(categorieId.toString()));
+    }
 
-            verify(categorieBilletRepository, never()).delete(any());
-        }
+    @Test
+    void update_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.DRAFT, UUID.randomUUID());
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
 
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.DRAFT, UUID.randomUUID());
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
+        assertThrows(ForbiddenOperationException.class, () -> service.update(categorieId, RequestValide()));
 
-            assertThatThrownBy(() -> service.delete(categorieId, orgaId))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        verify(categorieBilletMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(categorieBilletRepository, never()).delete(any());
-        }
+    @Test
+    void update_eventCancelled_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.CANCELLED, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"CANCELLED", "COMPLETED"})
-        void eventAnnuleOuTermine_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
+        assertThrows(BusinessRuleException.class, () -> service.update(categorieId, RequestValide()));
 
-            assertThatThrownBy(() -> service.delete(categorieId, orgaId))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(categorieBilletMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(categorieBilletRepository, never()).delete(any());
-        }
+    @Test
+    void update_eventCompleted_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.COMPLETED, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
 
-        @Test
-        void derniereCategorieDUnEventPublie_leveBusinessRule() {
-            Event event = event(StatusEvenment.PUBLISHED, orgaId);
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie(event, "VIP")));
-            when(categorieBilletRepository.countByEventId(eventId)).thenReturn(1L);
+        assertThrows(BusinessRuleException.class, () -> service.update(categorieId, RequestValide()));
 
-            assertThatThrownBy(() -> service.delete(categorieId, orgaId))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(categorieBilletMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(categorieBilletRepository, never()).delete(any());
-        }
+    @Test
+    void update_quotaSuperieurALaQuantite_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
 
-        @Test
-        void eventPublieAvecPlusieursCategories_supprime() {
-            Event event = event(StatusEvenment.PUBLISHED, orgaId);
-            CategorieBillet categorie = categorie(event, "VIP");
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
-            when(categorieBilletRepository.countByEventId(eventId)).thenReturn(2L);
+        assertThrows(BusinessRuleException.class, () -> service.update(categorieId, OneRequest("VIP", 5, 10, orgaId)));
 
-            service.delete(categorieId, orgaId);
+        verify(categorieBilletMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(categorieBilletRepository).delete(categorie);
-        }
+    @Test
+    void update_nomChangeEtDejaPris_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
+        when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "Standard")).thenReturn(true);
 
-        @Test
-        void eventDraftAvecUneSeuleCategorie_supprimeSansCompter() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            CategorieBillet categorie = categorie(event, "VIP");
-            when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
+        assertThrows(BusinessRuleException.class, () -> service.update(categorieId, OneRequest("Standard", 10, 4, orgaId)));
 
-            service.delete(categorieId, orgaId);
+        verify(categorieBilletMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(categorieBilletRepository).delete(categorie);
-            verify(categorieBilletRepository, never()).countByEventId(any());
-        }
+    @Test
+    void update_nomChangeEtLibre_metAJourEtRetourneLesPlaces() {
+        // ARRANGE
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        CategorieBillet categorie = OneCategorie(event, "VIP");
+        CategorieBilletRequest request = OneRequest("Premium", 10, 4, orgaId);
+        CategorieBilletResponse response = mock(CategorieBilletResponse.class);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
+        when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "Premium")).thenReturn(false);
+        when(disponibiliteService.placesParCategorie(eventId, List.of(categorie))).thenReturn(Map.of(categorieId, 3));
+        when(categorieBilletMapper.toResponse(categorie, 3)).thenReturn(response);
+
+        // ACT
+        CategorieBilletResponse result = service.update(categorieId, request);
+
+        // ASSERT
+        assertSame(response, result);
+        verify(categorieBilletMapper).updateEntity(request, categorie);
+    }
+
+    @Test
+    void update_memeNomAvecCasseDifferente_neVerifiePasLUnicite() {
+        // ARRANGE : "VIP" -> "vip" = meme nom, donc pas de test d'unicite
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        CategorieBillet categorie = OneCategorie(event, "VIP");
+        CategorieBilletRequest request = OneRequest("vip", 10, 4, orgaId);
+        CategorieBilletResponse response = mock(CategorieBilletResponse.class);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
+        when(disponibiliteService.placesParCategorie(eventId, List.of(categorie))).thenReturn(Map.of(categorieId, 3));
+        when(categorieBilletMapper.toResponse(categorie, 3)).thenReturn(response);
+
+        // ACT
+        CategorieBilletResponse result = service.update(categorieId, request);
+
+        // ASSERT
+        assertSame(response, result);
+        verify(categorieBilletRepository, never()).existsByEventIdAndNomIgnoreCase(any(), anyString());
+        verify(categorieBilletMapper).updateEntity(request, categorie);
+    }
+
+    // =====================================================================
+    // delete
+    // =====================================================================
+    @Test
+    void delete_categorieIntrouvable_ResourceNotFound() {
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.delete(categorieId, orgaId));
+
+        verify(categorieBilletRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.DRAFT, UUID.randomUUID());
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
+
+        assertThrows(ForbiddenOperationException.class, () -> service.delete(categorieId, orgaId));
+
+        verify(categorieBilletRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_eventCancelled_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.CANCELLED, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
+
+        assertThrows(BusinessRuleException.class, () -> service.delete(categorieId, orgaId));
+
+        verify(categorieBilletRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_eventCompleted_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.COMPLETED, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
+
+        assertThrows(BusinessRuleException.class, () -> service.delete(categorieId, orgaId));
+
+        verify(categorieBilletRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_derniereCategorieDUnEventPublie_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(OneCategorie(event, "VIP")));
+        when(categorieBilletRepository.countByEventId(eventId)).thenReturn(1L); // il n'en reste qu'une
+
+        assertThrows(BusinessRuleException.class, () -> service.delete(categorieId, orgaId));
+
+        verify(categorieBilletRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_eventPublieAvecPlusieursCategories_supprime() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        CategorieBillet categorie = OneCategorie(event, "VIP");
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
+        when(categorieBilletRepository.countByEventId(eventId)).thenReturn(2L);
+
+        service.delete(categorieId, orgaId);
+
+        verify(categorieBilletRepository).delete(categorie);
+    }
+
+    @Test
+    void delete_eventDraftAvecUneSeuleCategorie_supprimeSansCompter() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        CategorieBillet categorie = OneCategorie(event, "VIP");
+        when(categorieBilletRepository.findById(categorieId)).thenReturn(Optional.of(categorie));
+
+        service.delete(categorieId, orgaId);
+
+        verify(categorieBilletRepository).delete(categorie);
+        verify(categorieBilletRepository, never()).countByEventId(any()); // la regle ne concerne que les events publies
+    }
+
+    // =====================================================================
+    // methodes utilitaires (evitent de repeter le meme code dans plusieurs tests)
+    // =====================================================================
+    private void createNominal(StatusEvenment statut) {
+        // ARRANGE
+        Event event = OneEvent(statut, orgaId);
+        CategorieBilletRequest request = RequestValide();
+        CategorieBillet categorie = CategorieBillet.builder().nom("VIP").build();   // ce que renvoie le mapper
+        CategorieBillet saved = OneCategorie(event, "VIP");                         // ce que renvoie save
+        CategorieBilletResponse response = mock(CategorieBilletResponse.class);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.existsByEventIdAndNomIgnoreCase(eventId, "VIP")).thenReturn(false);
+        when(categorieBilletMapper.toEntity(request)).thenReturn(categorie);
+        when(categorieBilletRepository.save(categorie)).thenReturn(saved);
+        when(categorieBilletMapper.toResponse(saved, 10)).thenReturn(response); // 10 = quantiteTotale de saved
+
+        // ACT
+        CategorieBilletResponse result = service.create(eventId, request);
+
+        // ASSERT
+        assertSame(response, result);
+        assertSame(event, categorie.getEvent()); // la categorie est liee a l'event
+    }
+
+    private void listInvisible(StatusEvenment statut) {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(OneEvent(statut, orgaId)));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.listByEvent(eventId));
+
+        verify(categorieBilletRepository, never()).findByEventId(any());
     }
 }

@@ -25,16 +25,14 @@ import com.eventPro.eventPro.repository.PromotionRepository;
 import com.eventPro.eventPro.repository.RemboursementRepository;
 import com.eventPro.eventPro.repository.ReservationRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -42,28 +40,31 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class RemboursementServiceTest {
 
-    @Mock private RemboursementRepository remboursementRepository;
-    @Mock private ReservationRepository reservationRepository;
-    @Mock private PaiementRepository paiementRepository;
-    @Mock private BilletRepository billetRepository;
-    @Mock private PromotionRepository promotionRepository;
-    @Mock private PaymentGateway paymentGateway;
-    @Mock private RemboursementMapper remboursementMapper;
+    @Mock
+    private RemboursementRepository remboursementRepository;
+    @Mock
+    private ReservationRepository reservationRepository;
+    @Mock
+    private PaiementRepository paiementRepository;
+    @Mock
+    private BilletRepository billetRepository;
+    @Mock
+    private PromotionRepository promotionRepository;
+    @Mock
+    private PaymentGateway paymentGateway;
+    @Mock
+    private RemboursementMapper remboursementMapper;
 
-    @InjectMocks private RemboursementService service;
+    @InjectMocks
+    private RemboursementService service;
 
     private static final String PAY_REF = "PAY-24B841D23C";
 
@@ -83,65 +84,74 @@ class RemboursementServiceTest {
     @BeforeEach
     void setUp() {
         client = mock(Client.class);
-        lenient().when(client.getId()).thenReturn(clientId);
+        when(client.getId()).thenReturn(clientId);
 
         request = mock(RemboursementRequest.class);
-        lenient().when(request.clientId()).thenReturn(clientId);
-        lenient().when(request.motif()).thenReturn("Empechement de derniere minute");
+        when(request.clientId()).thenReturn(clientId);
+        when(request.motif()).thenReturn("Empechement de derniere minute");
 
         paiementReussi = mock(PaymentResult.class);
-        lenient().when(paiementReussi.success()).thenReturn(true);
+        when(paiementReussi.success()).thenReturn(true);
         paiementEchoue = mock(PaymentResult.class);
-        lenient().when(paiementEchoue.success()).thenReturn(false);
+        when(paiementEchoue.success()).thenReturn(false);
 
         response = mock(RemboursementResponse.class);
-        lenient().when(remboursementMapper.toResponse(any(Remboursement.class))).thenReturn(response);
-        lenient().when(remboursementRepository.save(any(Remboursement.class))).thenAnswer(i -> i.getArgument(0));
+        when(remboursementMapper.toResponse(any(Remboursement.class))).thenReturn(response);
+        when(remboursementRepository.save(any(Remboursement.class))).thenAnswer(i -> i.getArgument(0));
     }
 
-    // ================= helpers : TOUJOURS les appeler dans une variable locale, jamais dans when(...) =================
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    // IMPORTANT : toujours les appeler dans une variable locale, jamais a l'interieur de when(...)
 
-    /** Event dont le debut est dans `heures` heures. */
-    private Event eventDans(long heures, StatusEvenment statut) {
+    // event dont le debut est dans "heures" heures
+    private Event EventDans(long heures, StatusEvenment statut) {
         return Event.builder().statut(statut).dateDebut(LocalDateTime.now().plusHours(heures)).build();
     }
 
-    private Reservation reservation(StatutReservation statut, Event event, Promotion promotion) {
+    private Reservation OneReservation(StatutReservation statut, Event event, Promotion promotion) {
         Reservation r = mock(Reservation.class);
-        lenient().when(r.getId()).thenReturn(reservationId);
-        lenient().when(r.getStatut()).thenReturn(statut);
-        lenient().when(r.getClient()).thenReturn(client);
-        lenient().when(r.getEvent()).thenReturn(event);
-        lenient().when(r.getPromotion()).thenReturn(promotion);
+        when(r.getId()).thenReturn(reservationId);
+        when(r.getStatut()).thenReturn(statut);
+        when(r.getClient()).thenReturn(client);
+        when(r.getEvent()).thenReturn(event);
+        when(r.getPromotion()).thenReturn(promotion);
         return r;
     }
 
-    private Paiement paiement(Reservation reservation) {
+    private Paiement OnePaiement(Reservation reservation) {
         Paiement p = mock(Paiement.class);
-        lenient().when(p.getId()).thenReturn(paiementId);
-        lenient().when(p.getMontant()).thenReturn(montant);
-        lenient().when(p.getReference()).thenReturn(PAY_REF);
-        lenient().when(p.getReservation()).thenReturn(reservation);
+        when(p.getId()).thenReturn(paiementId);
+        when(p.getMontant()).thenReturn(montant);
+        when(p.getReference()).thenReturn(PAY_REF);
+        when(p.getReservation()).thenReturn(reservation);
         return p;
     }
 
-    private Billet billet(StatutBillet statut) {
+    private Billet OneBillet(StatutBillet statut) {
         Billet b = mock(Billet.class);
-        lenient().when(b.getStatut()).thenReturn(statut);
+        when(b.getStatut()).thenReturn(statut);
         return b;
     }
 
-    private Promotion promotion() {
+    private Promotion OnePromotion() {
         return Promotion.builder().id(promoId).build();
     }
 
-    /** Branche reservation / paiement / billets pour `demander`. */
+    // un remboursement deja refuse (pour approuverExceptionnellement)
+    private Remboursement OneRejete(Paiement paiement) {
+        return Remboursement.builder().paiement(paiement).statut(StatutRemboursement.REJECTED)
+                .montant(BigDecimal.ZERO)
+                .decision("Refusé : la demande doit être faite au moins 48h avant le début de l'événement").build();
+    }
+
+    // branche reservation / paiement / billets pour demander() et rembourserAutomatiquement()
     private void stubDemande(Reservation reservation, Paiement paiement, List<Billet> billets) {
         when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
         when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(paiement));
         when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(billets);
     }
 
+    // recupere le remboursement envoye a save()
     private Remboursement remboursementSauvegarde() {
         ArgumentCaptor<Remboursement> captor = ArgumentCaptor.forClass(Remboursement.class);
         verify(remboursementRepository).save(captor.capture());
@@ -149,462 +159,540 @@ class RemboursementServiceTest {
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("demander")
-    class Demander {
+    // demander : erreurs
+    // =====================================================================
+    @Test
+    void demander_reservationIntrouvable_ResourceNotFound() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.demander(reservationId, request));
 
-            assertThatThrownBy(() -> service.demander(reservationId, request))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(reservationId.toString());
+        assertTrue(ex.getMessage().contains(reservationId.toString()));
+        verifyNoInteractions(paiementRepository, paymentGateway);
+    }
 
-            verifyNoInteractions(paiementRepository, paymentGateway);
-        }
+    @Test
+    void demander_pasLeProprietaire_Forbidden() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.PUBLISHED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        RemboursementRequest autre = mock(RemboursementRequest.class);
+        when(autre.clientId()).thenReturn(UUID.randomUUID());
 
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.PUBLISHED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            RemboursementRequest autre = mock(RemboursementRequest.class);
-            when(autre.clientId()).thenReturn(UUID.randomUUID());
+        assertThrows(ForbiddenOperationException.class, () -> service.demander(reservationId, autre));
 
-            assertThatThrownBy(() -> service.demander(reservationId, autre))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        verifyNoInteractions(paymentGateway);
+        verify(remboursementRepository, never()).save(any());
+    }
 
-            verifyNoInteractions(paymentGateway);
-            verify(remboursementRepository, never()).save(any());
-        }
+    @Test
+    void demander_dejaRemboursee_BusinessRule() {
+        Reservation reservation = OneReservation(StatutReservation.REFUNDED, EventDans(100, StatusEvenment.PUBLISHED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
 
-        @Test
-        void dejaRemboursee_leveBusinessRule() {
-            Reservation reservation = reservation(StatutReservation.REFUNDED, eventDans(100, StatusEvenment.PUBLISHED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        BusinessRuleException ex = assertThrows(BusinessRuleException.class,
+                () -> service.demander(reservationId, request));
 
-            assertThatThrownBy(() -> service.demander(reservationId, request))
-                    .isInstanceOf(BusinessRuleException.class)
-                    .hasMessageContaining("déjà été remboursée");
+        assertTrue(ex.getMessage().contains("déjà été remboursée"));
+        verifyNoInteractions(paymentGateway);
+    }
 
-            verifyNoInteractions(paymentGateway);
-        }
+    @Test
+    void demander_reservationPendingPayment_BusinessRule() {
+        demanderReservationNonPayee(StatutReservation.PENDING_PAYMENT);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = {"CONFIRMED", "REFUNDED"})
-        void reservationNonPayee_leveBusinessRule(StatutReservation statut) {
-            Reservation reservation = reservation(statut, eventDans(100, StatusEvenment.PUBLISHED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+    @Test
+    void demander_reservationExpired_BusinessRule() {
+        demanderReservationNonPayee(StatutReservation.EXPIRED);
+    }
 
-            assertThatThrownBy(() -> service.demander(reservationId, request))
-                    .isInstanceOf(BusinessRuleException.class)
-                    .hasMessageContaining(statut.name());
+    @Test
+    void demander_reservationCancelled_BusinessRule() {
+        demanderReservationNonPayee(StatutReservation.CANCELLED);
+    }
 
-            verify(remboursementRepository, never()).save(any());
-            verifyNoInteractions(paymentGateway);
-        }
+    @Test
+    void demander_paiementIntrouvable_ResourceNotFound() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.PUBLISHED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
 
-        @Test
-        void paiementIntrouvable_leveResourceNotFound() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.PUBLISHED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.demander(reservationId, request));
 
-            assertThatThrownBy(() -> service.demander(reservationId, request))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(paymentGateway);
+    }
 
-            verifyNoInteractions(paymentGateway);
-        }
+    @Test
+    void demander_refusDejaEnregistre_retourneLaMemeReponse_sansRienRefaire() {
+        // ARRANGE : un refus existe deja pour ce paiement
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(10, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Remboursement dejaRefuse = Remboursement.builder().statut(StatutRemboursement.REJECTED).build();
+        RemboursementResponse existante = mock(RemboursementResponse.class);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(paiement));
+        when(remboursementRepository.findFirstByPaiementIdAndStatut(paiementId, StatutRemboursement.REJECTED))
+                .thenReturn(Optional.of(dejaRefuse));
+        when(remboursementMapper.toResponse(dejaRefuse)).thenReturn(existante);
 
-        @Test
-        void refusDejaEnregistre_retourneLaMemeReponse_sansRienRefaire() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(10, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Remboursement dejaRefuse = Remboursement.builder().statut(StatutRemboursement.REJECTED).build();
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(paiement));
-            when(remboursementRepository.findFirstByPaiementIdAndStatut(paiementId, StatutRemboursement.REJECTED))
-                    .thenReturn(Optional.of(dejaRefuse));
-            RemboursementResponse existante = mock(RemboursementResponse.class);
-            when(remboursementMapper.toResponse(dejaRefuse)).thenReturn(existante);
+        // ACT
+        RemboursementResponse result = service.demander(reservationId, request);
 
-            assertThat(service.demander(reservationId, request)).isSameAs(existante);
-
-            verify(remboursementRepository, never()).save(any());
-            verifyNoInteractions(paymentGateway, billetRepository);
-        }
-
-        @Test
-        void nominalPlusDe48h_rembourseIntegralement() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(30 * 24, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Billet b1 = billet(StatutBillet.VALID);
-            Billet b2 = billet(StatutBillet.VALID);
-            stubDemande(reservation, paiement, List.of(b1, b2));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            RemboursementResponse result = service.demander(reservationId, request);
-
-            assertThat(result).isSameAs(response);
-            Remboursement r = remboursementSauvegarde();
-            assertThat(r.getStatut()).isEqualTo(StatutRemboursement.APPROVED);
-            assertThat(r.getMontant()).isEqualByComparingTo("650.00");
-            assertThat(r.getDecision()).isEqualTo("Remboursement intégral (100%)");
-            assertThat(r.getMotif()).isEqualTo("Empechement de derniere minute");
-            assertThat(r.getPaiement()).isSameAs(paiement);
-            verify(paymentGateway).refund(montant, PAY_REF);
-            verify(reservation).setStatut(StatutReservation.REFUNDED);
-            verify(b1).setStatut(StatutBillet.CANCELLED);
-            verify(b2).setStatut(StatutBillet.CANCELLED);
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
-
-        @Test
-        void nominalAvecPromo_rendLUtilisationDeLaPromo() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(30 * 24, StatusEvenment.PUBLISHED), promotion());
-            Paiement paiement = paiement(reservation);
-            stubDemande(reservation, paiement, List.of(billet(StatutBillet.VALID)));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            service.demander(reservationId, request);
-
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
-
-        @Test
-        void unPeuPlusDe48hAvantLeDebut_estAccepte() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(49, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            stubDemande(reservation, paiement, List.of(billet(StatutBillet.VALID)));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            service.demander(reservationId, request);
-
-            assertThat(remboursementSauvegarde().getStatut()).isEqualTo(StatutRemboursement.APPROVED);
-        }
-
-        @Test
-        void moinsDe48h_estRefuse_sansToucherAuPaiementNiAuxBillets() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(47, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Billet b1 = billet(StatutBillet.VALID);
-            stubDemande(reservation, paiement, List.of(b1));
-
-            RemboursementResponse result = service.demander(reservationId, request);
-
-            assertThat(result).isSameAs(response);
-            Remboursement r = remboursementSauvegarde();
-            assertThat(r.getStatut()).isEqualTo(StatutRemboursement.REJECTED);
-            assertThat(r.getMontant()).isEqualByComparingTo("0");
-            assertThat(r.getDecision()).contains("48h");
-            verifyNoInteractions(paymentGateway);
-            verify(reservation, never()).setStatut(any());
-            verify(b1, never()).setStatut(any());
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
-
-        @Test
-        void billetDejaUtilise_estRefuse() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(30 * 24, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Billet utilise = billet(StatutBillet.USED);
-            Billet valide = billet(StatutBillet.VALID);
-            stubDemande(reservation, paiement, List.of(utilise, valide));
-
-            service.demander(reservationId, request);
-
-            Remboursement r = remboursementSauvegarde();
-            assertThat(r.getStatut()).isEqualTo(StatutRemboursement.REJECTED);
-            assertThat(r.getDecision()).contains("déjà été utilisé");
-            verifyNoInteractions(paymentGateway);
-            verify(reservation, never()).setStatut(any());
-        }
-
-        @Test
-        void moinsDe48hEtBilletUtilise_laRaisonDesDelaisPrime() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(10, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            stubDemande(reservation, paiement, List.of(billet(StatutBillet.USED)));
-
-            service.demander(reservationId, request);
-
-            assertThat(remboursementSauvegarde().getDecision()).contains("48h");
-        }
-
-        @Test
-        void eventAnnule_rembourseMemeSiMoinsDe48hEtBilletUtilise() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(5, StatusEvenment.CANCELLED), null);
-            Paiement paiement = paiement(reservation);
-            Billet utilise = billet(StatutBillet.USED);
-            stubDemande(reservation, paiement, List.of(utilise));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            service.demander(reservationId, request);
-
-            assertThat(remboursementSauvegarde().getStatut()).isEqualTo(StatutRemboursement.APPROVED);
-            verify(reservation).setStatut(StatutReservation.REFUNDED);
-            verify(utilise).setStatut(StatutBillet.CANCELLED);
-        }
-
-        @Test
-        void echecDuGateway_leveBusinessRule_etNeSauvegardeRien() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(30 * 24, StatusEvenment.PUBLISHED), promotion());
-            Paiement paiement = paiement(reservation);
-            Billet b1 = billet(StatutBillet.VALID);
-            stubDemande(reservation, paiement, List.of(b1));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
-
-            assertThatThrownBy(() -> service.demander(reservationId, request))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(remboursementRepository, never()).save(any());
-            verify(reservation, never()).setStatut(any());
-            verify(b1, never()).setStatut(any());
-            verify(promotionRepository, never()).devrementUtilisation(any());
-        }
+        // ASSERT
+        assertSame(existante, result);
+        verify(remboursementRepository, never()).save(any());
+        verifyNoInteractions(paymentGateway, billetRepository);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("getByReservation")
-    class GetByReservation {
+    // demander : remboursement accepte
+    // =====================================================================
+    @Test
+    void demander_nominalPlusDe48h_rembourseIntegralement() {
+        // ARRANGE : l'event commence dans 30 jours
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(30 * 24, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Billet b1 = OneBillet(StatutBillet.VALID);
+        Billet b2 = OneBillet(StatutBillet.VALID);
+        stubDemande(reservation, paiement, List.of(b1, b2));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
+        // ACT
+        RemboursementResponse result = service.demander(reservationId, request);
 
-            assertThatThrownBy(() -> service.getByReservation(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+        // ASSERT
+        assertSame(response, result);
+        Remboursement r = remboursementSauvegarde();
+        assertEquals(StatutRemboursement.APPROVED, r.getStatut());
+        assertEquals(0, r.getMontant().compareTo(new BigDecimal("650.00")));
+        assertEquals("Remboursement intégral (100%)", r.getDecision());
+        assertEquals("Empechement de derniere minute", r.getMotif());
+        assertSame(paiement, r.getPaiement());
+        verify(paymentGateway).refund(montant, PAY_REF);
+        verify(reservation).setStatut(StatutReservation.REFUNDED);
+        verify(b1).setStatut(StatutBillet.CANCELLED);
+        verify(b2).setStatut(StatutBillet.CANCELLED);
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
 
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.PUBLISHED), null);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+    @Test
+    void demander_nominalAvecPromo_rendLUtilisationDeLaPromo() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(30 * 24, StatusEvenment.PUBLISHED), OnePromotion());
+        Paiement paiement = OnePaiement(reservation);
+        stubDemande(reservation, paiement, List.of(OneBillet(StatutBillet.VALID)));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
 
-            assertThatThrownBy(() -> service.getByReservation(reservationId, UUID.randomUUID()))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        service.demander(reservationId, request);
 
-            verify(remboursementRepository, never()).findByPaiementReservationIdOrderByDateDemandeDesc(any());
-        }
+        verify(promotionRepository).devrementUtilisation(promoId);
+    }
 
-        @Test
-        void nominal_retourneLesRemboursementsMappes() {
-            Reservation reservation = reservation(StatutReservation.REFUNDED, eventDans(100, StatusEvenment.PUBLISHED), null);
-            Remboursement r1 = Remboursement.builder().statut(StatutRemboursement.REJECTED).build();
-            Remboursement r2 = Remboursement.builder().statut(StatutRemboursement.APPROVED).build();
-            RemboursementResponse resp1 = mock(RemboursementResponse.class);
-            RemboursementResponse resp2 = mock(RemboursementResponse.class);
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
-            when(remboursementRepository.findByPaiementReservationIdOrderByDateDemandeDesc(reservationId))
-                    .thenReturn(List.of(r2, r1));
-            when(remboursementMapper.toResponse(r1)).thenReturn(resp1);
-            when(remboursementMapper.toResponse(r2)).thenReturn(resp2);
+    @Test
+    void demander_unPeuPlusDe48hAvantLeDebut_estAccepte() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(49, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        stubDemande(reservation, paiement, List.of(OneBillet(StatutBillet.VALID)));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
 
-            assertThat(service.getByReservation(reservationId, clientId)).containsExactly(resp2, resp1);
-        }
+        service.demander(reservationId, request);
+
+        assertEquals(StatutRemboursement.APPROVED, remboursementSauvegarde().getStatut());
+    }
+
+    @Test
+    void demander_eventAnnule_rembourseMemeSiMoinsDe48hEtBilletUtilise() {
+        // event annule : pas de regle des 48h, pas de refus pour billet utilise
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(5, StatusEvenment.CANCELLED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Billet utilise = OneBillet(StatutBillet.USED);
+        stubDemande(reservation, paiement, List.of(utilise));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
+
+        service.demander(reservationId, request);
+
+        assertEquals(StatutRemboursement.APPROVED, remboursementSauvegarde().getStatut());
+        verify(reservation).setStatut(StatutReservation.REFUNDED);
+        verify(utilise).setStatut(StatutBillet.CANCELLED);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("rembourserAutomatiquement")
-    class RembourserAutomatiquement {
+    // demander : remboursement refuse
+    // =====================================================================
+    @Test
+    void demander_moinsDe48h_estRefuse_sansToucherAuPaiementNiAuxBillets() {
+        // ARRANGE : l'event commence dans 47h
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(47, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Billet b1 = OneBillet(StatutBillet.VALID);
+        stubDemande(reservation, paiement, List.of(b1));
 
-        @Test
-        void reservationIntrouvable_retourneFalse() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+        // ACT
+        RemboursementResponse result = service.demander(reservationId, request);
 
-            assertThat(service.rembourserAutomatiquement(reservationId)).isFalse();
+        // ASSERT
+        assertSame(response, result);
+        Remboursement r = remboursementSauvegarde();
+        assertEquals(StatutRemboursement.REJECTED, r.getStatut());
+        assertEquals(0, r.getMontant().compareTo(BigDecimal.ZERO));
+        assertTrue(r.getDecision().contains("48h"));
+        verifyNoInteractions(paymentGateway);
+        verify(reservation, never()).setStatut(any());
+        verify(b1, never()).setStatut(any());
+        verify(promotionRepository, never()).devrementUtilisation(any());
+    }
 
-            verifyNoInteractions(paymentGateway, remboursementRepository);
-        }
+    @Test
+    void demander_billetDejaUtilise_estRefuse() {
+        // ARRANGE : plus de 48h mais un billet est USED
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(30 * 24, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Billet utilise = OneBillet(StatutBillet.USED);
+        Billet valide = OneBillet(StatutBillet.VALID);
+        stubDemande(reservation, paiement, List.of(utilise, valide));
 
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = "CONFIRMED")
-        void reservationPasConfirmee_retourneFalse(StatutReservation statut) {
-            Reservation reservation = reservation(statut, eventDans(100, StatusEvenment.CANCELLED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        // ACT
+        service.demander(reservationId, request);
 
-            assertThat(service.rembourserAutomatiquement(reservationId)).isFalse();
+        // ASSERT
+        Remboursement r = remboursementSauvegarde();
+        assertEquals(StatutRemboursement.REJECTED, r.getStatut());
+        assertTrue(r.getDecision().contains("déjà été utilisé"));
+        verifyNoInteractions(paymentGateway);
+        verify(reservation, never()).setStatut(any());
+    }
 
-            verifyNoInteractions(paymentGateway, remboursementRepository);
-        }
+    @Test
+    void demander_moinsDe48hEtBilletUtilise_laRaisonDesDelaisPrime() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(10, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        stubDemande(reservation, paiement, List.of(OneBillet(StatutBillet.USED)));
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "CANCELLED")
-        void eventPasAnnule_retourneFalse(StatusEvenment statutEvent) {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, statutEvent), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        service.demander(reservationId, request);
 
-            assertThat(service.rembourserAutomatiquement(reservationId)).isFalse();
+        assertTrue(remboursementSauvegarde().getDecision().contains("48h"));
+    }
 
-            verifyNoInteractions(paymentGateway, remboursementRepository);
-        }
+    @Test
+    void demander_echecDuGateway_BusinessRule_etNeSauvegardeRien() {
+        // ARRANGE : le gateway refuse le remboursement
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(30 * 24, StatusEvenment.PUBLISHED), OnePromotion());
+        Paiement paiement = OnePaiement(reservation);
+        Billet b1 = OneBillet(StatutBillet.VALID);
+        stubDemande(reservation, paiement, List.of(b1));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
 
-        @Test
-        void paiementIntrouvable_leveResourceNotFound() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.CANCELLED), null);
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
+        // ACT + ASSERT
+        assertThrows(BusinessRuleException.class, () -> service.demander(reservationId, request));
 
-            assertThatThrownBy(() -> service.rembourserAutomatiquement(reservationId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        @Test
-        void nominal_rembourseTout_billetsUtilisesInclus() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.CANCELLED), null);
-            Paiement paiement = paiement(reservation);
-            Billet valide = billet(StatutBillet.VALID);
-            Billet utilise = billet(StatutBillet.USED);
-            stubDemande(reservation, paiement, List.of(valide, utilise));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            assertThat(service.rembourserAutomatiquement(reservationId)).isTrue();
-
-            Remboursement r = remboursementSauvegarde();
-            assertThat(r.getStatut()).isEqualTo(StatutRemboursement.APPROVED);
-            assertThat(r.getMontant()).isEqualByComparingTo("650.00");
-            assertThat(r.getMotif()).contains("Annulation");
-            assertThat(r.getDecision()).contains("automatique");
-            verify(reservation).setStatut(StatutReservation.REFUNDED);
-            verify(valide).setStatut(StatutBillet.CANCELLED);
-            verify(utilise).setStatut(StatutBillet.CANCELLED);
-        }
-
-        @Test
-        void nominalAvecPromo_rendLUtilisation() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.CANCELLED), promotion());
-            Paiement paiement = paiement(reservation);
-            stubDemande(reservation, paiement, List.of(billet(StatutBillet.VALID)));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
-
-            assertThat(service.rembourserAutomatiquement(reservationId)).isTrue();
-
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
-
-        @Test
-        void echecDuGateway_leveBusinessRule_etNeSauvegardeRien() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(100, StatusEvenment.CANCELLED), null);
-            Paiement paiement = paiement(reservation);
-            stubDemande(reservation, paiement, List.of(billet(StatutBillet.VALID)));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
-
-            assertThatThrownBy(() -> service.rembourserAutomatiquement(reservationId))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verify(remboursementRepository, never()).save(any());
-            verify(reservation, never()).setStatut(any());
-        }
+        verify(remboursementRepository, never()).save(any());
+        verify(reservation, never()).setStatut(any());
+        verify(b1, never()).setStatut(any());
+        verify(promotionRepository, never()).devrementUtilisation(any());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("approuverExceptionnellement")
-    class ApprouverExceptionnellement {
+    // getByReservation
+    // =====================================================================
+    @Test
+    void getByReservation_reservationIntrouvable_ResourceNotFound() {
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
 
-        private Remboursement rejete(Paiement paiement) {
-            return Remboursement.builder()
-                    .paiement(paiement)
-                    .statut(StatutRemboursement.REJECTED)
-                    .montant(BigDecimal.ZERO)
-                    .decision("Refusé : la demande doit être faite au moins 48h avant le début de l'événement")
-                    .build();
-        }
+        assertThrows(ResourceNotFoundException.class, () -> service.getByReservation(reservationId, clientId));
+    }
 
-        @Test
-        void remboursementIntrouvable_leveResourceNotFound() {
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.empty());
+    @Test
+    void getByReservation_pasLeProprietaire_Forbidden() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.PUBLISHED), null);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
 
-            assertThatThrownBy(() -> service.approuverExceptionnellement(remboursementId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(remboursementId.toString());
+        assertThrows(ForbiddenOperationException.class,
+                () -> service.getByReservation(reservationId, UUID.randomUUID()));
 
-            verifyNoInteractions(paymentGateway);
-        }
+        verify(remboursementRepository, never()).findByPaiementReservationIdOrderByDateDemandeDesc(any());
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatutRemboursement.class, mode = EnumSource.Mode.EXCLUDE, names = "REJECTED")
-        void statutDifferentDeRejected_leveBusinessRule(StatutRemboursement statut) {
-            Remboursement remboursement = Remboursement.builder().statut(statut).build();
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+    @Test
+    void getByReservation_nominal_retourneLesRemboursementsMappes() {
+        // ARRANGE
+        Reservation reservation = OneReservation(StatutReservation.REFUNDED, EventDans(100, StatusEvenment.PUBLISHED), null);
+        Remboursement r1 = Remboursement.builder().statut(StatutRemboursement.REJECTED).build();
+        Remboursement r2 = Remboursement.builder().statut(StatutRemboursement.APPROVED).build();
+        RemboursementResponse resp1 = mock(RemboursementResponse.class);
+        RemboursementResponse resp2 = mock(RemboursementResponse.class);
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(remboursementRepository.findByPaiementReservationIdOrderByDateDemandeDesc(reservationId))
+                .thenReturn(List.of(r2, r1));
+        when(remboursementMapper.toResponse(r1)).thenReturn(resp1);
+        when(remboursementMapper.toResponse(r2)).thenReturn(resp2);
 
-            assertThatThrownBy(() -> service.approuverExceptionnellement(remboursementId))
-                    .isInstanceOf(BusinessRuleException.class);
+        // ACT
+        List<RemboursementResponse> result = service.getByReservation(reservationId, clientId);
 
-            verifyNoInteractions(paymentGateway, reservationRepository);
-        }
+        // ASSERT : l'ordre du repository est conserve (r2 puis r1)
+        assertEquals(2, result.size());
+        assertSame(resp2, result.get(0));
+        assertSame(resp1, result.get(1));
+    }
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(10, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Remboursement remboursement = rejete(paiement);
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+    // =====================================================================
+    // rembourserAutomatiquement
+    // =====================================================================
+    @Test
+    void auto_reservationIntrouvable_retourneFalse() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.approuverExceptionnellement(remboursementId))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        assertFalse(service.rembourserAutomatiquement(reservationId));
 
-            verifyNoInteractions(paymentGateway);
-        }
+        verifyNoInteractions(paymentGateway, remboursementRepository);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = "CONFIRMED")
-        void reservationPlusRemboursable_leveBusinessRule(StatutReservation statut) {
-            Reservation reservation = reservation(statut, eventDans(10, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Remboursement remboursement = rejete(paiement);
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+    @Test
+    void auto_reservationPendingPayment_retourneFalse() {
+        autoReservationPasConfirmee(StatutReservation.PENDING_PAYMENT);
+    }
 
-            assertThatThrownBy(() -> service.approuverExceptionnellement(remboursementId))
-                    .isInstanceOf(BusinessRuleException.class);
+    @Test
+    void auto_reservationExpired_retourneFalse() {
+        autoReservationPasConfirmee(StatutReservation.EXPIRED);
+    }
 
-            verifyNoInteractions(paymentGateway);
-            assertThat(remboursement.getStatut()).isEqualTo(StatutRemboursement.REJECTED);
-        }
+    @Test
+    void auto_reservationCancelled_retourneFalse() {
+        autoReservationPasConfirmee(StatutReservation.CANCELLED);
+    }
 
-        @Test
-        void nominal_approuveEtRembourseIntegralement() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(10, StatusEvenment.PUBLISHED), promotion());
-            Paiement paiement = paiement(reservation);
-            Remboursement remboursement = rejete(paiement);
-            Billet utilise = billet(StatutBillet.USED);
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of(utilise));
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
+    @Test
+    void auto_reservationRefunded_retourneFalse() {
+        autoReservationPasConfirmee(StatutReservation.REFUNDED);
+    }
 
-            RemboursementResponse result = service.approuverExceptionnellement(remboursementId);
+    @Test
+    void auto_eventDraft_retourneFalse() {
+        autoEventPasAnnule(StatusEvenment.DRAFT);
+    }
 
-            assertThat(result).isSameAs(response);
-            assertThat(remboursement.getStatut()).isEqualTo(StatutRemboursement.APPROVED);
-            assertThat(remboursement.getMontant()).isEqualByComparingTo("650.00");
-            assertThat(remboursement.getDecision()).contains("exceptionnellement");
-            verify(reservation).setStatut(StatutReservation.REFUNDED);
-            verify(utilise).setStatut(StatutBillet.CANCELLED);
-            verify(promotionRepository).devrementUtilisation(promoId);
-        }
+    @Test
+    void auto_eventPublished_retourneFalse() {
+        autoEventPasAnnule(StatusEvenment.PUBLISHED);
+    }
 
-        @Test
-        void echecDuGateway_leveBusinessRule_etLeRemboursementResteRejete() {
-            Reservation reservation = reservation(StatutReservation.CONFIRMED, eventDans(10, StatusEvenment.PUBLISHED), null);
-            Paiement paiement = paiement(reservation);
-            Remboursement remboursement = rejete(paiement);
-            when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
-            when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of());
-            when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
+    @Test
+    void auto_eventCompleted_retourneFalse() {
+        autoEventPasAnnule(StatusEvenment.COMPLETED);
+    }
 
-            assertThatThrownBy(() -> service.approuverExceptionnellement(remboursementId))
-                    .isInstanceOf(BusinessRuleException.class);
+    @Test
+    void auto_paiementIntrouvable_ResourceNotFound() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.CANCELLED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
 
-            assertThat(remboursement.getStatut()).isEqualTo(StatutRemboursement.REJECTED);
-            verify(reservation, never()).setStatut(any());
-        }
+        assertThrows(ResourceNotFoundException.class, () -> service.rembourserAutomatiquement(reservationId));
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void auto_nominal_rembourseTout_billetsUtilisesInclus() {
+        // ARRANGE : event annule, un billet VALID et un billet USED
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.CANCELLED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Billet valide = OneBillet(StatutBillet.VALID);
+        Billet utilise = OneBillet(StatutBillet.USED);
+        stubDemande(reservation, paiement, List.of(valide, utilise));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
+
+        // ACT
+        boolean result = service.rembourserAutomatiquement(reservationId);
+
+        // ASSERT
+        assertTrue(result);
+        Remboursement r = remboursementSauvegarde();
+        assertEquals(StatutRemboursement.APPROVED, r.getStatut());
+        assertEquals(0, r.getMontant().compareTo(new BigDecimal("650.00")));
+        assertTrue(r.getMotif().contains("Annulation"));
+        assertTrue(r.getDecision().contains("automatique"));
+        verify(reservation).setStatut(StatutReservation.REFUNDED);
+        verify(valide).setStatut(StatutBillet.CANCELLED);
+        verify(utilise).setStatut(StatutBillet.CANCELLED);
+    }
+
+    @Test
+    void auto_nominalAvecPromo_rendLUtilisation() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.CANCELLED), OnePromotion());
+        Paiement paiement = OnePaiement(reservation);
+        stubDemande(reservation, paiement, List.of(OneBillet(StatutBillet.VALID)));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
+
+        assertTrue(service.rembourserAutomatiquement(reservationId));
+
+        verify(promotionRepository).devrementUtilisation(promoId);
+    }
+
+    @Test
+    void auto_echecDuGateway_BusinessRule_etNeSauvegardeRien() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, StatusEvenment.CANCELLED), null);
+        Paiement paiement = OnePaiement(reservation);
+        stubDemande(reservation, paiement, List.of(OneBillet(StatutBillet.VALID)));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
+
+        assertThrows(BusinessRuleException.class, () -> service.rembourserAutomatiquement(reservationId));
+
+        verify(remboursementRepository, never()).save(any());
+        verify(reservation, never()).setStatut(any());
+    }
+
+    // =====================================================================
+    // approuverExceptionnellement
+    // =====================================================================
+    @Test
+    void approuver_remboursementIntrouvable_ResourceNotFound() {
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.approuverExceptionnellement(remboursementId));
+
+        assertTrue(ex.getMessage().contains(remboursementId.toString()));
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void approuver_statutPending_BusinessRule() {
+        approuverStatutNonRejete(StatutRemboursement.PENDING);
+    }
+
+    @Test
+    void approuver_statutApproved_BusinessRule() {
+        approuverStatutNonRejete(StatutRemboursement.APPROVED);
+    }
+
+    @Test
+    void approuver_reservationIntrouvable_ResourceNotFound() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(10, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Remboursement remboursement = OneRejete(paiement);
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.approuverExceptionnellement(remboursementId));
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void approuver_reservationPendingPayment_BusinessRule() {
+        approuverReservationPlusRemboursable(StatutReservation.PENDING_PAYMENT);
+    }
+
+    @Test
+    void approuver_reservationExpired_BusinessRule() {
+        approuverReservationPlusRemboursable(StatutReservation.EXPIRED);
+    }
+
+    @Test
+    void approuver_reservationCancelled_BusinessRule() {
+        approuverReservationPlusRemboursable(StatutReservation.CANCELLED);
+    }
+
+    @Test
+    void approuver_reservationRefunded_BusinessRule() {
+        approuverReservationPlusRemboursable(StatutReservation.REFUNDED);
+    }
+
+    @Test
+    void approuver_nominal_approuveEtRembourseIntegralement() {
+        // ARRANGE : un refus existe, l'admin l'approuve
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(10, StatusEvenment.PUBLISHED), OnePromotion());
+        Paiement paiement = OnePaiement(reservation);
+        Remboursement remboursement = OneRejete(paiement);
+        Billet utilise = OneBillet(StatutBillet.USED);
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of(utilise));
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementReussi);
+
+        // ACT
+        RemboursementResponse result = service.approuverExceptionnellement(remboursementId);
+
+        // ASSERT
+        assertSame(response, result);
+        assertEquals(StatutRemboursement.APPROVED, remboursement.getStatut());
+        assertEquals(0, remboursement.getMontant().compareTo(new BigDecimal("650.00")));
+        assertTrue(remboursement.getDecision().contains("exceptionnellement"));
+        verify(reservation).setStatut(StatutReservation.REFUNDED);
+        verify(utilise).setStatut(StatutBillet.CANCELLED);
+        verify(promotionRepository).devrementUtilisation(promoId);
+    }
+
+    @Test
+    void approuver_echecDuGateway_BusinessRule_etLeRemboursementResteRejete() {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(10, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Remboursement remboursement = OneRejete(paiement);
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(billetRepository.findByLigneReservationReservationId(reservationId)).thenReturn(List.of());
+        when(paymentGateway.refund(montant, PAY_REF)).thenReturn(paiementEchoue);
+
+        assertThrows(BusinessRuleException.class, () -> service.approuverExceptionnellement(remboursementId));
+
+        assertEquals(StatutRemboursement.REJECTED, remboursement.getStatut());
+        verify(reservation, never()).setStatut(any());
+    }
+
+    // =====================================================================
+    // methodes utilitaires (evitent de repeter le meme code dans plusieurs tests)
+    // =====================================================================
+    private void demanderReservationNonPayee(StatutReservation statut) {
+        Reservation reservation = OneReservation(statut, EventDans(100, StatusEvenment.PUBLISHED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+
+        BusinessRuleException ex = assertThrows(BusinessRuleException.class,
+                () -> service.demander(reservationId, request));
+
+        assertTrue(ex.getMessage().contains(statut.name())); // le message cite le statut
+        verify(remboursementRepository, never()).save(any());
+        verifyNoInteractions(paymentGateway);
+    }
+
+    private void autoReservationPasConfirmee(StatutReservation statut) {
+        Reservation reservation = OneReservation(statut, EventDans(100, StatusEvenment.CANCELLED), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+
+        assertFalse(service.rembourserAutomatiquement(reservationId));
+
+        verifyNoInteractions(paymentGateway, remboursementRepository);
+    }
+
+    private void autoEventPasAnnule(StatusEvenment statutEvent) {
+        Reservation reservation = OneReservation(StatutReservation.CONFIRMED, EventDans(100, statutEvent), null);
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+
+        assertFalse(service.rembourserAutomatiquement(reservationId));
+
+        verifyNoInteractions(paymentGateway, remboursementRepository);
+    }
+
+    private void approuverStatutNonRejete(StatutRemboursement statut) {
+        Remboursement remboursement = Remboursement.builder().statut(statut).build();
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+
+        assertThrows(BusinessRuleException.class, () -> service.approuverExceptionnellement(remboursementId));
+
+        verifyNoInteractions(paymentGateway, reservationRepository);
+    }
+
+    private void approuverReservationPlusRemboursable(StatutReservation statut) {
+        Reservation reservation = OneReservation(statut, EventDans(10, StatusEvenment.PUBLISHED), null);
+        Paiement paiement = OnePaiement(reservation);
+        Remboursement remboursement = OneRejete(paiement);
+        when(remboursementRepository.findById(remboursementId)).thenReturn(Optional.of(remboursement));
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+
+        assertThrows(BusinessRuleException.class, () -> service.approuverExceptionnellement(remboursementId));
+
+        verifyNoInteractions(paymentGateway);
+        assertEquals(StatutRemboursement.REJECTED, remboursement.getStatut()); // reste refuse
     }
 }

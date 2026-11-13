@@ -14,17 +14,15 @@ import com.eventPro.eventPro.model.enums.StatusEvenment;
 import com.eventPro.eventPro.repository.CategorieBilletRepository;
 import com.eventPro.eventPro.repository.EventRepository;
 import com.eventPro.eventPro.repository.OrganisateurRepository;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -37,489 +35,529 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class EventServiceTest {
 
-    @Mock private EventRepository eventRepository;
-    @Mock private OrganisateurRepository organisateurRepository;
-    @Mock private EventMapper eventMapper;
-    @Mock private CategorieBilletRepository categorieBilletRepository;
-    @Mock private DisponibiliteService disponibiliteService;
+    @Mock
+    private EventRepository eventRepository;
+    @Mock
+    private OrganisateurRepository organisateurRepository;
+    @Mock
+    private EventMapper eventMapper;
+    @Mock
+    private CategorieBilletRepository categorieBilletRepository;
+    @Mock
+    private DisponibiliteService disponibiliteService;
 
-    @InjectMocks private EventService eventService;
+    @InjectMocks
+    private EventService eventService; // le vrai service avec les faux repository dedans
 
-    @Captor private ArgumentCaptor<List<CategorieBillet>> categoriesCaptor;
+    @Captor
+    private ArgumentCaptor<List<CategorieBillet>> categoriesCaptor; // pour recuperer la liste envoyee a saveAll
 
     private final UUID eventId = UUID.randomUUID();
     private final UUID orgaId = UUID.randomUUID();
 
+    // dates valides par defaut
     private final LocalDateTime now = LocalDateTime.now();
     private final LocalDateTime debut = now.plusDays(30);
     private final LocalDateTime fin = debut.plusHours(3);
     private final LocalDateTime ouverture = now.minusDays(1);
     private final LocalDateTime cloture = now.plusDays(29);
 
-    // ================= helpers =================
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    private Organisateur OneOrganisateur(UUID id) {
+        return Organisateur.builder().id(id).build();
+    }
 
-    /** Requete avec les dates voulues (stubs lenient : la validation peut s'arreter avant de les lire toutes). */
-    private EventRequest request(LocalDateTime d, LocalDateTime f, LocalDateTime o, LocalDateTime c,
-                                 List<CategorieBilletCreation> categories) {
+    private Event OneEvent(StatusEvenment statut, UUID ownerId) {
+        return Event.builder().id(eventId).statut(statut).organisateur(OneOrganisateur(ownerId)).build();
+    }
+
+    // requete avec les dates voulues
+    private EventRequest OneRequest(LocalDateTime d, LocalDateTime f, LocalDateTime o, LocalDateTime c,
+                                    List<CategorieBilletCreation> categories) {
         EventRequest r = mock(EventRequest.class);
-        lenient().when(r.dateDebut()).thenReturn(d);
-        lenient().when(r.dateFin()).thenReturn(f);
-        lenient().when(r.dateOuvertureVente()).thenReturn(o);
-        lenient().when(r.dateClotureVente()).thenReturn(c);
-        lenient().when(r.organisateurId()).thenReturn(orgaId);
-        lenient().when(r.categories()).thenReturn(categories);
+        when(r.dateDebut()).thenReturn(d);
+        when(r.dateFin()).thenReturn(f);
+        when(r.dateOuvertureVente()).thenReturn(o);
+        when(r.dateClotureVente()).thenReturn(c);
+        when(r.organisateurId()).thenReturn(orgaId);
+        when(r.categories()).thenReturn(categories);
         return r;
     }
 
-    private EventRequest requestValide(List<CategorieBilletCreation> categories) {
-        return request(debut, fin, ouverture, cloture, categories);
+    private EventRequest RequestValide(List<CategorieBilletCreation> categories) {
+        return OneRequest(debut, fin, ouverture, cloture, categories);
     }
 
-    private CategorieBilletCreation cat(String nom, int quantite, int quota) {
+    private CategorieBilletCreation OneCategorie(String nom, int quantite, int quota) {
         CategorieBilletCreation c = mock(CategorieBilletCreation.class);
-        lenient().when(c.nom()).thenReturn(nom);
-        lenient().when(c.prixUnitaire()).thenReturn(new BigDecimal("100.00"));
-        lenient().when(c.quantiteTotale()).thenReturn(quantite);
-        lenient().when(c.quotaMaxParClient()).thenReturn(quota);
+        when(c.nom()).thenReturn(nom);
+        when(c.prixUnitaire()).thenReturn(new BigDecimal("100.00"));
+        when(c.quantiteTotale()).thenReturn(quantite);
+        when(c.quotaMaxParClient()).thenReturn(quota);
         return c;
     }
 
-    private Event event(StatusEvenment statut, UUID ownerId) {
-        Event e = mock(Event.class);
-        Organisateur o = mock(Organisateur.class);
-        lenient().when(o.getId()).thenReturn(ownerId);
-        lenient().when(e.getId()).thenReturn(eventId);
-        lenient().when(e.getOrganisateur()).thenReturn(o);
-        lenient().when(e.getStatut()).thenReturn(statut);
-        return e;
-    }
-
-    /** toResponse(event) : places = 7 (stub disponibilite + mapper). */
+    // prepare la reponse de toResponse(event) : 7 places disponibles
     private EventResponse stubResponse(Event event) {
         EventResponse response = mock(EventResponse.class);
-        when(disponibiliteService.placesParEvent(List.of(eventId))).thenReturn(Map.of(eventId, 7));
+        when(disponibiliteService.placesParEvent(List.of(event.getId()))).thenReturn(Map.of(event.getId(), 7));
         when(eventMapper.toResponse(event, 7)).thenReturn(response);
         return response;
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("create")
-    class Create {
+    // create
+    // =====================================================================
+    @Test
+    void create_sansCategories_creeEnDraft() {
+        // ARRANGE
+        EventRequest request = RequestValide(null);
+        Organisateur orga = OneOrganisateur(orgaId);
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId); // le service doit le remettre en DRAFT
+        when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(orga));
+        when(eventMapper.toEntity(request)).thenReturn(event);
+        when(eventRepository.save(event)).thenReturn(event);
+        EventResponse response = stubResponse(event);
 
-        @Test
-        void nominalSansCategories_creeEnDraft() {
-            EventRequest request = requestValide(null);
-            Organisateur orga = mock(Organisateur.class);
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(orga));
-            when(eventMapper.toEntity(request)).thenReturn(event);
-            when(eventRepository.save(event)).thenReturn(event);
-            EventResponse response = stubResponse(event);
+        // ACT
+        EventResponse result = eventService.create(request);
 
-            EventResponse result = eventService.create(request);
+        // ASSERT
+        assertSame(response, result);
+        assertEquals(StatusEvenment.DRAFT, event.getStatut()); // toujours DRAFT a la creation
+        assertSame(orga, event.getOrganisateur());              // lie a l'organisateur
+        verify(categorieBilletRepository, never()).saveAll(any()); // pas de categories
+    }
 
-            assertThat(result).isSameAs(response);
-            verify(event).setStatut(StatusEvenment.DRAFT);
-            verify(event).setOrganisateur(orga);
-            verify(categorieBilletRepository, never()).saveAll(any());
-        }
+    @Test
+    void create_avecCategories_sauvegardeLesCategoriesLieesALEvent() {
+        // ARRANGE
+        List<CategorieBilletCreation> cats = List.of(OneCategorie("  VIP ", 10, 4), OneCategorie("Standard", 100, 6));
+        EventRequest request = RequestValide(cats);
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(OneOrganisateur(orgaId)));
+        when(eventMapper.toEntity(request)).thenReturn(event);
+        when(eventRepository.save(event)).thenReturn(event);
+        stubResponse(event);
 
-        @Test
-        void nominalAvecCategories_sauvegardeLesCategoriesLieesALEvent() {
-            List<CategorieBilletCreation> cats = List.of(cat("  VIP ", 10, 4), cat("Standard", 100, 6));
-            EventRequest request = requestValide(cats);
-            Organisateur orga = mock(Organisateur.class);
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(orga));
-            when(eventMapper.toEntity(request)).thenReturn(event);
-            when(eventRepository.save(event)).thenReturn(event);
-            stubResponse(event);
+        // ACT
+        eventService.create(request);
 
-            eventService.create(request);
+        // ASSERT : on recupere la liste envoyee a saveAll
+        verify(categorieBilletRepository).saveAll(categoriesCaptor.capture());
+        List<CategorieBillet> saved = categoriesCaptor.getValue();
+        assertEquals(2, saved.size());
+        assertEquals("VIP", saved.get(0).getNom());      // espaces enleves (strip)
+        assertEquals("Standard", saved.get(1).getNom());
+        assertSame(event, saved.get(0).getEvent());      // chaque categorie est liee a l'event
+        assertSame(event, saved.get(1).getEvent());
+    }
 
-            verify(categorieBilletRepository).saveAll(categoriesCaptor.capture());
-            List<CategorieBillet> saved = categoriesCaptor.getValue();
-            assertThat(saved).hasSize(2);
-            assertThat(saved).extracting(CategorieBillet::getNom).containsExactly("VIP", "Standard");
-            assertThat(saved).extracting(CategorieBillet::getEvent).containsOnly(event);
-        }
+    @Test
+    void create_listeDeCategoriesVide_neSauvegardeAucuneCategorie() {
+        // ARRANGE
+        EventRequest request = RequestValide(List.of());
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(OneOrganisateur(orgaId)));
+        when(eventMapper.toEntity(request)).thenReturn(event);
+        when(eventRepository.save(event)).thenReturn(event);
+        stubResponse(event);
 
-        @Test
-        void listeDeCategoriesVide_neSauvegardeAucuneCategorie() {
-            EventRequest request = requestValide(List.of());
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(organisateurRepository.findById(orgaId)).thenReturn(Optional.of(mock(Organisateur.class)));
-            when(eventMapper.toEntity(request)).thenReturn(event);
-            when(eventRepository.save(event)).thenReturn(event);
-            stubResponse(event);
+        // ACT
+        eventService.create(request);
 
-            eventService.create(request);
+        // ASSERT
+        verify(categorieBilletRepository, never()).saveAll(any());
+    }
 
-            verify(categorieBilletRepository, never()).saveAll(any());
-        }
+    @Test
+    void create_dateDebutDansLePasse_BusinessRule() {
+        // ARRANGE : debut hier
+        EventRequest request = OneRequest(now.minusDays(1), fin, ouverture, cloture, null);
 
-        @Test
-        void dateDebutDansLePasse_leveBusinessRule() {
-            EventRequest request = request(now.minusDays(1), fin, ouverture, cloture, null);
+        // ACT + ASSERT
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verifyNoInteractions(organisateurRepository, eventMapper); // la validation est avant tout acces
+        verify(eventRepository, never()).save(any());
+    }
 
-            verifyNoInteractions(organisateurRepository, eventMapper);
-            verify(eventRepository, never()).save(any());
-        }
+    @Test
+    void create_dateFinAvantDateDebut_BusinessRule() {
+        EventRequest request = OneRequest(debut, debut.minusHours(1), ouverture, cloture, null);
 
-        @Test
-        void dateFinAvantDateDebut_leveBusinessRule() {
-            EventRequest request = request(debut, debut.minusHours(1), ouverture, cloture, null);
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(eventRepository, never()).save(any());
+    }
 
-            verify(eventRepository, never()).save(any());
-        }
+    @Test
+    void create_ouvertureVenteApresOuEgaleACloture_BusinessRule() {
+        EventRequest request = OneRequest(debut, fin, cloture, cloture, null);
 
-        @Test
-        void ouvertureVenteApresOuEgaleACloture_leveBusinessRule() {
-            EventRequest request = request(debut, fin, cloture, cloture, null);
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(eventRepository, never()).save(any());
+    }
 
-            verify(eventRepository, never()).save(any());
-        }
+    @Test
+    void create_clotureVenteApresLeDebut_BusinessRule() {
+        EventRequest request = OneRequest(debut, fin, ouverture, debut.plusHours(1), null);
 
-        @Test
-        void clotureVenteApresLeDebut_leveBusinessRule() {
-            EventRequest request = request(debut, fin, ouverture, debut.plusHours(1), null);
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(eventRepository, never()).save(any());
+    }
 
-            verify(eventRepository, never()).save(any());
-        }
+    @Test
+    void create_quotaSuperieurALaQuantite_BusinessRule() {
+        // quota 10 > quantite 5
+        EventRequest request = RequestValide(List.of(OneCategorie("VIP", 5, 10)));
 
-        @Test
-        void quotaSuperieurALaQuantite_leveBusinessRule_avantToutAcces() {
-            EventRequest request = requestValide(List.of(cat("VIP", 5, 10)));
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verifyNoInteractions(organisateurRepository, eventMapper);
+        verify(eventRepository, never()).save(any());
+    }
 
-            verifyNoInteractions(organisateurRepository, eventMapper);
-            verify(eventRepository, never()).save(any());
-        }
+    @Test
+    void create_nomsDeCategoriesEnDouble_ignoreCasseEtEspaces_BusinessRule() {
+        EventRequest request = RequestValide(List.of(OneCategorie("VIP", 10, 4), OneCategorie("  vip ", 20, 4)));
 
-        @Test
-        void nomsDeCategoriesEnDouble_ignoreCasseEtEspaces_leveBusinessRule() {
-            EventRequest request = requestValide(List.of(cat("VIP", 10, 4), cat("  vip ", 20, 4)));
+        assertThrows(BusinessRuleException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(eventRepository, never()).save(any());
+        verify(categorieBilletRepository, never()).saveAll(any());
+    }
 
-            verify(eventRepository, never()).save(any());
-            verify(categorieBilletRepository, never()).saveAll(any());
-        }
+    @Test
+    void create_organisateurIntrouvable_ResourceNotFound() {
+        EventRequest request = RequestValide(null);
+        when(organisateurRepository.findById(orgaId)).thenReturn(Optional.empty());
 
-        @Test
-        void organisateurIntrouvable_leveResourceNotFound() {
-            EventRequest request = requestValide(null);
-            when(organisateurRepository.findById(orgaId)).thenReturn(Optional.empty());
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> eventService.create(request));
 
-            assertThatThrownBy(() -> eventService.create(request))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(orgaId.toString());
-
-            verify(eventRepository, never()).save(any());
-        }
+        assertTrue(ex.getMessage().contains(orgaId.toString()));
+        verify(eventRepository, never()).save(any());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("update")
-    class Update {
+    // update
+    // =====================================================================
+    @Test
+    void update_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> eventService.update(eventId, RequestValide(null)));
+    }
 
-            assertThatThrownBy(() -> eventService.update(eventId, requestValide(null)))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+    @Test
+    void update_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.DRAFT, UUID.randomUUID()); // un autre organisateur
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.DRAFT, UUID.randomUUID());
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        assertThrows(ForbiddenOperationException.class, () -> eventService.update(eventId, RequestValide(null)));
 
-            assertThatThrownBy(() -> eventService.update(eventId, requestValide(null)))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        verify(eventMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(eventMapper, never()).updateEntity(any(), any());
-        }
+    @Test
+    void update_eventPublished_BusinessRule() {
+        updateRefuse(StatusEvenment.PUBLISHED);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "DRAFT")
-        void statutDifferentDeDraft_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+    @Test
+    void update_eventCancelled_BusinessRule() {
+        updateRefuse(StatusEvenment.CANCELLED);
+    }
 
-            assertThatThrownBy(() -> eventService.update(eventId, requestValide(null)))
-                    .isInstanceOf(BusinessRuleException.class);
+    @Test
+    void update_eventCompleted_BusinessRule() {
+        updateRefuse(StatusEvenment.COMPLETED);
+    }
 
-            verify(eventMapper, never()).updateEntity(any(), any());
-        }
+    @Test
+    void update_datesInvalides_BusinessRule_etNeModifieRien() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        EventRequest request = OneRequest(debut, debut.minusHours(2), ouverture, cloture, null);
 
-        @Test
-        void datesInvalides_leveBusinessRule_etNeModifieRien() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            EventRequest request = request(debut, debut.minusHours(2), ouverture, cloture, null);
+        assertThrows(BusinessRuleException.class, () -> eventService.update(eventId, request));
 
-            assertThatThrownBy(() -> eventService.update(eventId, request))
-                    .isInstanceOf(BusinessRuleException.class);
+        verify(eventMapper, never()).updateEntity(any(), any());
+    }
 
-            verify(eventMapper, never()).updateEntity(any(), any());
-        }
+    @Test
+    void update_nominal_metAJourLEntite() {
+        // ARRANGE
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        EventRequest request = RequestValide(null);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        EventResponse response = stubResponse(event);
 
-        @Test
-        void nominal_metAJourLEntite() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            EventRequest request = requestValide(null);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            EventResponse response = stubResponse(event);
+        // ACT
+        EventResponse result = eventService.update(eventId, request);
 
-            EventResponse result = eventService.update(eventId, request);
-
-            assertThat(result).isSameAs(response);
-            verify(eventMapper).updateEntity(request, event);
-        }
+        // ASSERT
+        assertSame(response, result);
+        verify(eventMapper).updateEntity(request, event); // l'entite est mise a jour par le mapper
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("publier")
-    class Publier {
+    // publier
+    // =====================================================================
+    @Test
+    void publier_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> eventService.publier(eventId, orgaId));
+    }
 
-            assertThatThrownBy(() -> eventService.publier(eventId, orgaId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+    @Test
+    void publier_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.DRAFT, UUID.randomUUID());
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.DRAFT, UUID.randomUUID());
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        assertThrows(ForbiddenOperationException.class, () -> eventService.publier(eventId, orgaId));
 
-            assertThatThrownBy(() -> eventService.publier(eventId, orgaId))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        assertEquals(StatusEvenment.DRAFT, event.getStatut()); // pas change
+    }
 
-            verify(event, never()).setStatut(any());
-        }
+    @Test
+    void publier_eventDejaPublished_BusinessRule() {
+        publierRefuse(StatusEvenment.PUBLISHED);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "DRAFT")
-        void statutDifferentDeDraft_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+    @Test
+    void publier_eventCancelled_BusinessRule() {
+        publierRefuse(StatusEvenment.CANCELLED);
+    }
 
-            assertThatThrownBy(() -> eventService.publier(eventId, orgaId))
-                    .isInstanceOf(BusinessRuleException.class);
+    @Test
+    void publier_eventCompleted_BusinessRule() {
+        publierRefuse(StatusEvenment.COMPLETED);
+    }
 
-            verify(event, never()).setStatut(any());
-        }
+    @Test
+    void publier_sansAucuneCategorie_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.existsByEventId(eventId)).thenReturn(false);
 
-        @Test
-        void sansAucuneCategorie_leveBusinessRule() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            when(categorieBilletRepository.existsByEventId(eventId)).thenReturn(false);
+        assertThrows(BusinessRuleException.class, () -> eventService.publier(eventId, orgaId));
 
-            assertThatThrownBy(() -> eventService.publier(eventId, orgaId))
-                    .isInstanceOf(BusinessRuleException.class);
+        assertEquals(StatusEvenment.DRAFT, event.getStatut()); // reste DRAFT
+    }
 
-            verify(event, never()).setStatut(any());
-        }
+    @Test
+    void publier_nominal_passeEnPublished() {
+        // ARRANGE
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(categorieBilletRepository.existsByEventId(eventId)).thenReturn(true);
+        EventResponse response = stubResponse(event);
 
-        @Test
-        void nominal_passeEnPublished() {
-            Event event = event(StatusEvenment.DRAFT, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            when(categorieBilletRepository.existsByEventId(eventId)).thenReturn(true);
-            EventResponse response = stubResponse(event);
+        // ACT
+        EventResponse result = eventService.publier(eventId, orgaId);
 
-            EventResponse result = eventService.publier(eventId, orgaId);
-
-            assertThat(result).isSameAs(response);
-            verify(event).setStatut(StatusEvenment.PUBLISHED);
-        }
+        // ASSERT
+        assertSame(response, result);
+        assertEquals(StatusEvenment.PUBLISHED, event.getStatut());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("annuler")
-    class Annuler {
+    // annuler
+    // =====================================================================
+    @Test
+    void annuler_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> eventService.annuler(eventId, orgaId));
+    }
 
-            assertThatThrownBy(() -> eventService.annuler(eventId, orgaId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+    @Test
+    void annuler_pasLOrganisateur_Forbidden() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, UUID.randomUUID());
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @Test
-        void pasLOrganisateur_leveForbidden() {
-            Event event = event(StatusEvenment.PUBLISHED, UUID.randomUUID());
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        assertThrows(ForbiddenOperationException.class, () -> eventService.annuler(eventId, orgaId));
 
-            assertThatThrownBy(() -> eventService.annuler(eventId, orgaId))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        assertEquals(StatusEvenment.PUBLISHED, event.getStatut());
+    }
 
-            verify(event, never()).setStatut(any());
-        }
+    @Test
+    void annuler_dejaCancelled_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.CANCELLED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"CANCELLED", "COMPLETED"})
-        void dejaAnnuleOuTermine_leveBusinessRule(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        assertThrows(BusinessRuleException.class, () -> eventService.annuler(eventId, orgaId));
+    }
 
-            assertThatThrownBy(() -> eventService.annuler(eventId, orgaId))
-                    .isInstanceOf(BusinessRuleException.class);
+    @Test
+    void annuler_dejaCompleted_BusinessRule() {
+        Event event = OneEvent(StatusEvenment.COMPLETED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-            verify(event, never()).setStatut(any());
-        }
+        assertThrows(BusinessRuleException.class, () -> eventService.annuler(eventId, orgaId));
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, names = {"DRAFT", "PUBLISHED"})
-        void nominal_passeEnCancelled(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            EventResponse response = stubResponse(event);
+        assertEquals(StatusEvenment.COMPLETED, event.getStatut());
+    }
 
-            EventResponse result = eventService.annuler(eventId, orgaId);
+    @Test
+    void annuler_depuisPublished_passeEnCancelled() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        EventResponse response = stubResponse(event);
 
-            assertThat(result).isSameAs(response);
-            verify(event).setStatut(StatusEvenment.CANCELLED);
-        }
+        EventResponse result = eventService.annuler(eventId, orgaId);
+
+        assertSame(response, result);
+        assertEquals(StatusEvenment.CANCELLED, event.getStatut());
+    }
+
+    @Test
+    void annuler_depuisDraft_passeEnCancelled() {
+        Event event = OneEvent(StatusEvenment.DRAFT, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        stubResponse(event);
+
+        eventService.annuler(eventId, orgaId);
+
+        assertEquals(StatusEvenment.CANCELLED, event.getStatut());
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("getById")
-    class GetById {
+    // getById
+    // =====================================================================
+    @Test
+    void getById_eventIntrouvable_ResourceNotFound() {
+        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
 
-        @Test
-        void eventIntrouvable_leveResourceNotFound() {
-            when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> eventService.getById(eventId));
+    }
 
-            assertThatThrownBy(() -> eventService.getById(eventId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+    @Test
+    void getById_eventDraft_estInvisible_404() {
+        getByIdInvisible(StatusEvenment.DRAFT);
+    }
 
-        @ParameterizedTest
-        @EnumSource(value = StatusEvenment.class, mode = EnumSource.Mode.EXCLUDE, names = "PUBLISHED")
-        void eventNonPublie_estInvisible_404(StatusEvenment statut) {
-            Event event = event(statut, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+    @Test
+    void getById_eventCancelled_estInvisible_404() {
+        getByIdInvisible(StatusEvenment.CANCELLED);
+    }
 
-            assertThatThrownBy(() -> eventService.getById(eventId))
-                    .isInstanceOf(ResourceNotFoundException.class);
+    @Test
+    void getById_eventCompleted_estInvisible_404() {
+        getByIdInvisible(StatusEvenment.COMPLETED);
+    }
 
-            verifyNoInteractions(eventMapper, disponibiliteService);
-        }
+    @Test
+    void getById_eventPublie_retourneLaReponse() {
+        Event event = OneEvent(StatusEvenment.PUBLISHED, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        EventResponse response = stubResponse(event);
 
-        @Test
-        void eventPublie_retourneLaReponse() {
-            Event event = event(StatusEvenment.PUBLISHED, orgaId);
-            when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
-            EventResponse response = stubResponse(event);
-
-            assertThat(eventService.getById(eventId)).isSameAs(response);
-        }
+        assertSame(response, eventService.getById(eventId));
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("listes")
-    class Listes {
+    // listPublished / listByOrganisateur
+    // =====================================================================
+    @Test
+    void listPublished_mappeAvecLesPlaces_etZeroParDefaut() {
+        // ARRANGE : e1 a des places connues (4), e2 n'est pas dans la map => 0
+        Pageable pageable = PageRequest.of(0, 10);
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Event e1 = Event.builder().id(id1).build();
+        Event e2 = Event.builder().id(id2).build();
+        EventResponse r1 = mock(EventResponse.class);
+        EventResponse r2 = mock(EventResponse.class);
+        when(eventRepository.findByStatut(StatusEvenment.PUBLISHED, pageable))
+                .thenReturn(new PageImpl<>(List.of(e1, e2), pageable, 2));
+        when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of(id1, 4));
+        when(eventMapper.toResponse(e1, 4)).thenReturn(r1);
+        when(eventMapper.toResponse(e2, 0)).thenReturn(r2);
 
-        private final Pageable pageable = PageRequest.of(0, 10);
+        // ACT
+        Page<EventResponse> result = eventService.listPublished(pageable);
 
-        @Test
-        void listPublished_mappeAvecLesPlaces_etZeroParDefaut() {
-            UUID id1 = UUID.randomUUID();
-            UUID id2 = UUID.randomUUID();
-            Event e1 = mock(Event.class);
-            Event e2 = mock(Event.class);
-            when(e1.getId()).thenReturn(id1);
-            when(e2.getId()).thenReturn(id2);
-            Page<Event> page = new PageImpl<>(List.of(e1, e2), pageable, 2);
-            EventResponse r1 = mock(EventResponse.class);
-            EventResponse r2 = mock(EventResponse.class);
+        // ASSERT
+        assertEquals(2, result.getContent().size());
+        assertSame(r1, result.getContent().get(0));
+        assertSame(r2, result.getContent().get(1));
+    }
 
-            when(eventRepository.findByStatut(StatusEvenment.PUBLISHED, pageable)).thenReturn(page);
-            when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of(id1, 4)); // id2 absent
-            when(eventMapper.toResponse(e1, 4)).thenReturn(r1);
-            when(eventMapper.toResponse(e2, 0)).thenReturn(r2);
+    @Test
+    void listPublished_pageVide() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(eventRepository.findByStatut(StatusEvenment.PUBLISHED, pageable))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+        when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of());
 
-            Page<EventResponse> result = eventService.listPublished(pageable);
+        assertTrue(eventService.listPublished(pageable).getContent().isEmpty());
+    }
 
-            assertThat(result.getContent()).containsExactly(r1, r2);
-            assertThat(result.getTotalElements()).isEqualTo(2);
-        }
+    @Test
+    void listByOrganisateur_organisateurIntrouvable_ResourceNotFound() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(organisateurRepository.existsById(orgaId)).thenReturn(false);
 
-        @Test
-        void listPublished_pageVide() {
-            when(eventRepository.findByStatut(StatusEvenment.PUBLISHED, pageable))
-                    .thenReturn(new PageImpl<>(List.of(), pageable, 0));
-            when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of());
+        assertThrows(ResourceNotFoundException.class, () -> eventService.listByOrganisateur(orgaId, pageable));
 
-            assertThat(eventService.listPublished(pageable).getContent()).isEmpty();
-        }
+        verify(eventRepository, never()).findByOrganisateurId(any(), any());
+    }
 
-        @Test
-        void listByOrganisateur_organisateurIntrouvable_leveResourceNotFound() {
-            when(organisateurRepository.existsById(orgaId)).thenReturn(false);
+    @Test
+    void listByOrganisateur_nominal_retourneSesEvents() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Event e1 = OneEvent(StatusEvenment.DRAFT, orgaId);
+        EventResponse r1 = mock(EventResponse.class);
+        when(organisateurRepository.existsById(orgaId)).thenReturn(true);
+        when(eventRepository.findByOrganisateurId(orgaId, pageable)).thenReturn(new PageImpl<>(List.of(e1), pageable, 1));
+        when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of(eventId, 3));
+        when(eventMapper.toResponse(e1, 3)).thenReturn(r1);
 
-            assertThatThrownBy(() -> eventService.listByOrganisateur(orgaId, pageable))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(orgaId.toString());
+        Page<EventResponse> result = eventService.listByOrganisateur(orgaId, pageable);
 
-            verify(eventRepository, never()).findByOrganisateurId(any(), any());
-        }
+        assertEquals(1, result.getContent().size());
+        assertSame(r1, result.getContent().get(0));
+    }
 
-        @Test
-        void listByOrganisateur_nominal_retourneSesEvents() {
-            Event e1 = mock(Event.class);
-            when(e1.getId()).thenReturn(eventId);
-            EventResponse r1 = mock(EventResponse.class);
-            when(organisateurRepository.existsById(orgaId)).thenReturn(true);
-            when(eventRepository.findByOrganisateurId(orgaId, pageable))
-                    .thenReturn(new PageImpl<>(List.of(e1), pageable, 1));
-            when(disponibiliteService.placesParEvent(anyList())).thenReturn(Map.of(eventId, 3));
-            when(eventMapper.toResponse(e1, 3)).thenReturn(r1);
+    // =====================================================================
+    // methodes utilitaires (evitent de repeter le meme code dans plusieurs tests)
+    // =====================================================================
+    private void updateRefuse(StatusEvenment statut) {
+        Event event = OneEvent(statut, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
-            assertThat(eventService.listByOrganisateur(orgaId, pageable).getContent()).containsExactly(r1);
-        }
+        assertThrows(BusinessRuleException.class, () -> eventService.update(eventId, RequestValide(null)));
+
+        verify(eventMapper, never()).updateEntity(any(), any());
+    }
+
+    private void publierRefuse(StatusEvenment statut) {
+        Event event = OneEvent(statut, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+
+        assertThrows(BusinessRuleException.class, () -> eventService.publier(eventId, orgaId));
+
+        assertEquals(statut, event.getStatut()); // statut inchange
+    }
+
+    private void getByIdInvisible(StatusEvenment statut) {
+        Event event = OneEvent(statut, orgaId);
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+
+        assertThrows(ResourceNotFoundException.class, () -> eventService.getById(eventId));
+
+        verifyNoInteractions(eventMapper, disponibiliteService);
     }
 }

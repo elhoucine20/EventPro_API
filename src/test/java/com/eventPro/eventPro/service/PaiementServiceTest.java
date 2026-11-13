@@ -25,51 +25,53 @@ import com.eventPro.eventPro.repository.BilletRepository;
 import com.eventPro.eventPro.repository.PaiementRepository;
 import com.eventPro.eventPro.repository.ReservationRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class PaiementServiceTest {
 
-    @Mock private PaiementRepository paiementRepository;
-    @Mock private ReservationRepository reservationRepository;
-    @Mock private BilletRepository billetRepository;
-    @Mock private PaiementMapper paiementMapper;
-    @Mock private PaymentGateway paymentGateway;
+    @Mock
+    private PaiementRepository paiementRepository;
+    @Mock
+    private ReservationRepository reservationRepository;
+    @Mock
+    private BilletRepository billetRepository;
+    @Mock
+    private PaiementMapper paiementMapper;
+    @Mock
+    private PaymentGateway paymentGateway;
 
-    @InjectMocks private PaiementService service;
+    @InjectMocks
+    private PaiementService service;
 
-    @Captor private ArgumentCaptor<List<Billet>> billetsCaptor;
-    @Captor private ArgumentCaptor<String> referenceCaptor;
+    @Captor
+    private ArgumentCaptor<List<Billet>> billetsCaptor;
+    @Captor
+    private ArgumentCaptor<String> referenceCaptor;
 
     private static final String KEY = "key-1";
 
@@ -78,7 +80,7 @@ class PaiementServiceTest {
     private final BigDecimal total = new BigDecimal("650.00");
 
     private Client client;
-    private PaiementRequest request;          // requete valide par defaut : 650.00, pas d'echec
+    private PaiementRequest request;       // requete valide par defaut : 650.00, pas d'echec
     private PaymentResult chargeReussie;
     private PaymentResult chargeEchouee;
     private PaiementResponse response;
@@ -86,66 +88,69 @@ class PaiementServiceTest {
     @BeforeEach
     void setUp() {
         client = mock(Client.class);
-        lenient().when(client.getId()).thenReturn(clientId);
+        when(client.getId()).thenReturn(clientId);
 
-        request = requete("650.00", false);
+        request = OneRequest("650.00", false);
 
         chargeReussie = mock(PaymentResult.class);
-        lenient().when(chargeReussie.success()).thenReturn(true);
+        when(chargeReussie.success()).thenReturn(true);
         chargeEchouee = mock(PaymentResult.class);
-        lenient().when(chargeEchouee.success()).thenReturn(false);
+        when(chargeEchouee.success()).thenReturn(false);
 
         response = mock(PaiementResponse.class);
-        lenient().when(paiementMapper.toResponse(any(Paiement.class))).thenReturn(response);
-        lenient().when(paiementRepository.save(any(Paiement.class))).thenAnswer(i -> i.getArgument(0));
-        lenient().when(paiementRepository.existsByReference(anyString())).thenReturn(false);
+        when(paiementMapper.toResponse(any(Paiement.class))).thenReturn(response);
+        when(paiementRepository.save(any(Paiement.class))).thenAnswer(i -> i.getArgument(0));
+        when(paiementRepository.existsByReference(anyString())).thenReturn(false);
     }
 
-    // ================= helpers : TOUJOURS les appeler dans une variable locale, jamais dans when(...) =================
-
-    private PaiementRequest requete(String montant, Boolean simulerEchec) {
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    // IMPORTANT : toujours les appeler dans une variable locale, jamais a l'interieur de when(...)
+    private PaiementRequest OneRequest(String montant, Boolean simulerEchec) {
         PaiementRequest r = mock(PaiementRequest.class);
-        lenient().when(r.idempotencyKey()).thenReturn(KEY);
-        lenient().when(r.clientId()).thenReturn(clientId);
-        lenient().when(r.montant()).thenReturn(new BigDecimal(montant));
-        lenient().when(r.simulerEchec()).thenReturn(simulerEchec);
+        when(r.idempotencyKey()).thenReturn(KEY);
+        when(r.clientId()).thenReturn(clientId);
+        when(r.montant()).thenReturn(new BigDecimal(montant));
+        when(r.simulerEchec()).thenReturn(simulerEchec);
         return r;
     }
 
-    private LigneReservation ligne(int quantite) {
+    private LigneReservation OneLigne(int quantite) {
+        CategorieBillet categorie = mock(CategorieBillet.class);
         LigneReservation l = mock(LigneReservation.class);
-        lenient().when(l.getQuantite()).thenReturn(quantite);
-        lenient().when(l.getCategorieBillet()).thenReturn(mock(CategorieBillet.class));
+        when(l.getQuantite()).thenReturn(quantite);
+        when(l.getCategorieBillet()).thenReturn(categorie);
         return l;
     }
 
-    private Event event(StatusEvenment statut) {
+    private Event OneEvent(StatusEvenment statut) {
         return Event.builder().statut(statut).build();
     }
 
-    private Reservation reservation(StatutReservation statut, Event event, LocalDateTime expiration, List<LigneReservation> lignes) {
+    private Reservation OneReservation(StatutReservation statut, Event event, LocalDateTime expiration,
+                                       List<LigneReservation> lignes) {
         Reservation r = mock(Reservation.class);
-        lenient().when(r.getId()).thenReturn(reservationId);
-        lenient().when(r.getStatut()).thenReturn(statut);
-        lenient().when(r.getClient()).thenReturn(client);
-        lenient().when(r.getEvent()).thenReturn(event);
-        lenient().when(r.getDateExpiration()).thenReturn(expiration);
-        lenient().when(r.getMontantTotal()).thenReturn(total);
-        lenient().when(r.getLignes()).thenReturn(lignes);
+        when(r.getId()).thenReturn(reservationId);
+        when(r.getStatut()).thenReturn(statut);
+        when(r.getClient()).thenReturn(client);
+        when(r.getEvent()).thenReturn(event);
+        when(r.getDateExpiration()).thenReturn(expiration);
+        when(r.getMontantTotal()).thenReturn(total);
+        when(r.getLignes()).thenReturn(lignes);
         return r;
     }
 
-    /** Reservation payable : PENDING_PAYMENT, event publie, expire dans 10 min, 2 lignes (2 + 1 billets). */
-    private Reservation reservationPayable() {
-        List<LigneReservation> lignes = List.of(ligne(2), ligne(1));
-        Event event = event(StatusEvenment.PUBLISHED);
-        return reservation(StatutReservation.PENDING_PAYMENT, event, LocalDateTime.now().plusMinutes(10), lignes);
+    // reservation payable : PENDING_PAYMENT, event publie, expire dans 10 min, 2 lignes (2 + 1 billets)
+    private Reservation ReservationPayable() {
+        List<LigneReservation> lignes = List.of(OneLigne(2), OneLigne(1));
+        Event event = OneEvent(StatusEvenment.PUBLISHED);
+        return OneReservation(StatutReservation.PENDING_PAYMENT, event, LocalDateTime.now().plusMinutes(10), lignes);
     }
 
     private void stubReservation(Reservation reservation) {
         when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
     }
 
+    // recupere le paiement envoye a save()
     private Paiement paiementSauvegarde() {
         ArgumentCaptor<Paiement> captor = ArgumentCaptor.forClass(Paiement.class);
         verify(paiementRepository).save(captor.capture());
@@ -153,303 +158,327 @@ class PaiementServiceTest {
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("payer")
-    class Payer {
+    // payer : reservation / idempotence
+    // =====================================================================
+    @Test
+    void payer_reservationIntrouvable_ResourceNotFound() {
+        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
 
-        // ---------- reservation / idempotence ----------
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.payer(reservationId, request));
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.empty());
+        assertTrue(ex.getMessage().contains(reservationId.toString()));
+        verifyNoInteractions(paiementRepository, paymentGateway, billetRepository);
+    }
 
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(reservationId.toString());
+    @Test
+    void payer_replayMemeReservationEtMemeMontant_retourneLaReponseSansRepayer() {
+        // ARRANGE
+        Reservation reservation = ReservationPayable();
+        Paiement existant = mock(Paiement.class);
+        when(existant.getReservation()).thenReturn(reservation);
+        when(existant.getMontant()).thenReturn(new BigDecimal("650.0")); // echelle differente : on compare avec compareTo
+        stubReservation(reservation);
+        when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
+        when(paiementMapper.toResponse(existant)).thenReturn(response);
 
-            verifyNoInteractions(paiementRepository, paymentGateway, billetRepository);
-        }
+        // ACT
+        PaiementResponse result = service.payer(reservationId, request);
 
-        @Test
-        void replayMemeReservationEtMemeMontant_retourneLaReponseSansRepayer() {
-            Reservation reservation = reservationPayable();
-            Paiement existant = mock(Paiement.class);
-            when(existant.getReservation()).thenReturn(reservation);
-            when(existant.getMontant()).thenReturn(new BigDecimal("650.0"));   // echelle differente : compareTo
-            stubReservation(reservation);
-            when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
-            when(paiementMapper.toResponse(existant)).thenReturn(response);
+        // ASSERT : meme reponse, aucun nouveau paiement
+        assertSame(response, result);
+        verifyNoInteractions(paymentGateway, billetRepository);
+        verify(paiementRepository, never()).save(any());
+    }
 
-            assertThat(service.payer(reservationId, request)).isSameAs(response);
+    @Test
+    void payer_replayAvecUneAutreReservation_IdempotencyConflict() {
+        Reservation reservation = ReservationPayable();
+        Reservation autre = mock(Reservation.class);
+        when(autre.getId()).thenReturn(UUID.randomUUID());
+        Paiement existant = mock(Paiement.class);
+        when(existant.getReservation()).thenReturn(autre);
+        stubReservation(reservation);
+        when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
 
-            verifyNoInteractions(paymentGateway, billetRepository);
-            verify(paiementRepository, never()).save(any());
-        }
+        assertThrows(IdempotencyConflictException.class, () -> service.payer(reservationId, request));
 
-        @Test
-        void replayAvecUneAutreReservation_leveIdempotencyConflict() {
-            Reservation reservation = reservationPayable();
-            Reservation autre = mock(Reservation.class);
-            when(autre.getId()).thenReturn(UUID.randomUUID());
-            Paiement existant = mock(Paiement.class);
-            when(existant.getReservation()).thenReturn(autre);
-            stubReservation(reservation);
-            when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
+        verifyNoInteractions(paymentGateway);
+        verify(paiementRepository, never()).save(any());
+    }
 
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(IdempotencyConflictException.class);
+    @Test
+    void payer_replayAvecUnAutreMontant_IdempotencyConflict() {
+        Reservation reservation = ReservationPayable();
+        Paiement existant = mock(Paiement.class);
+        when(existant.getReservation()).thenReturn(reservation);
+        when(existant.getMontant()).thenReturn(new BigDecimal("100.00"));
+        stubReservation(reservation);
+        when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
 
-            verifyNoInteractions(paymentGateway);
-            verify(paiementRepository, never()).save(any());
-        }
+        assertThrows(IdempotencyConflictException.class, () -> service.payer(reservationId, request));
 
-        @Test
-        void replayAvecUnAutreMontant_leveIdempotencyConflict() {
-            Reservation reservation = reservationPayable();
-            Paiement existant = mock(Paiement.class);
-            when(existant.getReservation()).thenReturn(reservation);
-            when(existant.getMontant()).thenReturn(new BigDecimal("100.00"));
-            stubReservation(reservation);
-            when(paiementRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existant));
-
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(IdempotencyConflictException.class);
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        // ---------- checks ----------
-
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            PaiementRequest autreClient = mock(PaiementRequest.class);
-            when(autreClient.idempotencyKey()).thenReturn(KEY);
-            when(autreClient.clientId()).thenReturn(UUID.randomUUID());
-
-            assertThatThrownBy(() -> service.payer(reservationId, autreClient))
-                    .isInstanceOf(ForbiddenOperationException.class);
-
-            verifyNoInteractions(paymentGateway, billetRepository);
-            verify(paiementRepository, never()).save(any());
-        }
-
-        @Test
-        void reservationExpired_leveReservationExpired() {
-            Reservation reservation = reservation(StatutReservation.EXPIRED, event(StatusEvenment.PUBLISHED),
-                    LocalDateTime.now().minusMinutes(5), List.of());
-            stubReservation(reservation);
-
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(ReservationExpiredException.class);
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = StatutReservation.class, mode = EnumSource.Mode.EXCLUDE, names = {"PENDING_PAYMENT", "EXPIRED"})
-        void statutNonPayable_leveBusinessRule(StatutReservation statut) {
-            Reservation reservation = reservation(statut, event(StatusEvenment.PUBLISHED),
-                    LocalDateTime.now().plusMinutes(10), List.of());
-            stubReservation(reservation);
-
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(BusinessRuleException.class)
-                    .hasMessageContaining(statut.name());
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        @Test
-        void eventAnnule_leveBusinessRule() {
-            Reservation reservation = reservation(StatutReservation.PENDING_PAYMENT, event(StatusEvenment.CANCELLED),
-                    LocalDateTime.now().plusMinutes(10), List.of());
-            stubReservation(reservation);
-
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        @Test
-        void dateExpirationDepassee_leveReservationExpired() {
-            Reservation reservation = reservation(StatutReservation.PENDING_PAYMENT, event(StatusEvenment.PUBLISHED),
-                    LocalDateTime.now().minusMinutes(1), List.of());
-            stubReservation(reservation);
-
-            assertThatThrownBy(() -> service.payer(reservationId, request))
-                    .isInstanceOf(ReservationExpiredException.class);
-
-            verifyNoInteractions(paymentGateway);
-        }
-
-        @Test
-        void mauvaisMontant_leveBusinessRule_sansCharger() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            PaiementRequest mauvais = requete("100.00", false);
-
-            assertThatThrownBy(() -> service.payer(reservationId, mauvais))
-                    .isInstanceOf(BusinessRuleException.class);
-
-            verifyNoInteractions(paymentGateway, billetRepository);
-            verify(paiementRepository, never()).save(any());
-        }
-
-        // ---------- succes ----------
-
-        @Test
-        void succes_confirmeLaReservation_etGenereLesBillets() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
-
-            PaiementResponse result = service.payer(reservationId, request);
-
-            assertThat(result).isSameAs(response);
-            Paiement p = paiementSauvegarde();
-            assertThat(p.getStatut()).isEqualTo(StatutPaiement.SUCCESS);
-            assertThat(p.getMontant()).isEqualByComparingTo("650.00");
-            assertThat(p.getIdempotencyKey()).isEqualTo(KEY);
-            assertThat(p.getReference()).startsWith("PAY-");
-            assertThat(p.getDatePaiement()).isNotNull();
-            assertThat(p.getReservation()).isSameAs(reservation);
-            verify(reservation).setStatut(StatutReservation.CONFIRMED);
-            verify(paymentGateway).charge(eq(total), referenceCaptor.capture(), eq(false));
-            assertThat(referenceCaptor.getValue()).isEqualTo(p.getReference());
-        }
-
-        @Test
-        void succes_genereUnBilletParPlace_toutesVALID_avecCodesUniques() {
-            Reservation reservation = reservationPayable();   // lignes : 2 + 1
-            stubReservation(reservation);
-            when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
-
-            service.payer(reservationId, request);
-
-            verify(billetRepository).saveAll(billetsCaptor.capture());
-            List<Billet> billets = billetsCaptor.getValue();
-            assertThat(billets).hasSize(3);
-            assertThat(billets).extracting(Billet::getStatut).containsOnly(StatutBillet.VALID);
-            assertThat(billets).extracting(Billet::getCode).allMatch(c -> c.startsWith("BIL-")).doesNotHaveDuplicates();
-            assertThat(billets).extracting(Billet::getDateEmission).doesNotContainNull();
-        }
-
-        @Test
-        void montantEgalAvecUneAutreEchelle_estAccepte() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            PaiementRequest r = requete("650", false);   // 650 vs 650.00
-            when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
-
-            service.payer(reservationId, r);
-
-            assertThat(paiementSauvegarde().getStatut()).isEqualTo(StatutPaiement.SUCCESS);
-        }
-
-        @Test
-        void simulerEchecNull_estTraiteCommeFalse() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            PaiementRequest r = requete("650.00", null);
-            when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
-
-            service.payer(reservationId, r);
-
-            verify(paymentGateway).charge(eq(total), anyString(), eq(false));
-        }
-
-        @Test
-        void referenceDejaExistante_enRegenereUneAutre() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            when(paiementRepository.existsByReference(anyString())).thenReturn(true, false);
-            when(paymentGateway.charge(eq(total), anyString(), anyBoolean())).thenReturn(chargeReussie);
-
-            service.payer(reservationId, request);
-
-            verify(paiementRepository, times(2)).existsByReference(anyString());
-        }
-
-        // ---------- echec ----------
-
-        @Test
-        void echecSimule_paiementFailed_reservationEtBilletsInchanges() {
-            Reservation reservation = reservationPayable();
-            stubReservation(reservation);
-            PaiementRequest r = requete("650.00", true);
-            when(paymentGateway.charge(eq(total), anyString(), eq(true))).thenReturn(chargeEchouee);
-
-            PaiementResponse result = service.payer(reservationId, r);
-
-            assertThat(result).isSameAs(response);
-            assertThat(paiementSauvegarde().getStatut()).isEqualTo(StatutPaiement.FAILED);
-            verify(reservation, never()).setStatut(any());
-            verify(billetRepository, never()).saveAll(any());
-        }
-
-        @Test
-        void reessaiApresUnEchec_reutiliseLePaiementExistant() {
-            Reservation reservation = reservationPayable();
-            Paiement echoue = Paiement.builder().reservation(reservation).statut(StatutPaiement.FAILED).build();
-            stubReservation(reservation);
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(echoue));
-            when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
-
-            service.payer(reservationId, request);
-
-            Paiement sauvegarde = paiementSauvegarde();
-            assertThat(sauvegarde).isSameAs(echoue);
-            assertThat(sauvegarde.getStatut()).isEqualTo(StatutPaiement.SUCCESS);
-            verify(reservation).setStatut(StatutReservation.CONFIRMED);
-        }
+        verifyNoInteractions(paymentGateway);
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("getByReservation")
-    class GetByReservation {
+    // payer : checks
+    // =====================================================================
+    @Test
+    void payer_pasLeProprietaire_Forbidden() {
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        PaiementRequest autreClient = mock(PaiementRequest.class);
+        when(autreClient.idempotencyKey()).thenReturn(KEY);
+        when(autreClient.clientId()).thenReturn(UUID.randomUUID()); // un autre client
 
-        @Test
-        void reservationIntrouvable_leveResourceNotFound() {
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
+        assertThrows(ForbiddenOperationException.class, () -> service.payer(reservationId, autreClient));
 
-            assertThatThrownBy(() -> service.getByReservation(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(paymentGateway, billetRepository);
+        verify(paiementRepository, never()).save(any());
+    }
+
+    @Test
+    void payer_reservationExpired_ReservationExpired() {
+        Reservation reservation = OneReservation(StatutReservation.EXPIRED, OneEvent(StatusEvenment.PUBLISHED),
+                LocalDateTime.now().minusMinutes(5), List.of());
+        stubReservation(reservation);
+
+        assertThrows(ReservationExpiredException.class, () -> service.payer(reservationId, request));
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void payer_statutConfirmed_BusinessRule() {
+        payerStatutNonPayable(StatutReservation.CONFIRMED);
+    }
+
+    @Test
+    void payer_statutCancelled_BusinessRule() {
+        payerStatutNonPayable(StatutReservation.CANCELLED);
+    }
+
+    @Test
+    void payer_statutRefunded_BusinessRule() {
+        payerStatutNonPayable(StatutReservation.REFUNDED);
+    }
+
+    @Test
+    void payer_eventAnnule_BusinessRule() {
+        Reservation reservation = OneReservation(StatutReservation.PENDING_PAYMENT, OneEvent(StatusEvenment.CANCELLED),
+                LocalDateTime.now().plusMinutes(10), List.of());
+        stubReservation(reservation);
+
+        assertThrows(BusinessRuleException.class, () -> service.payer(reservationId, request));
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void payer_dateExpirationDepassee_ReservationExpired() {
+        Reservation reservation = OneReservation(StatutReservation.PENDING_PAYMENT, OneEvent(StatusEvenment.PUBLISHED),
+                LocalDateTime.now().minusMinutes(1), List.of());
+        stubReservation(reservation);
+
+        assertThrows(ReservationExpiredException.class, () -> service.payer(reservationId, request));
+
+        verifyNoInteractions(paymentGateway);
+    }
+
+    @Test
+    void payer_mauvaisMontant_BusinessRule_sansCharger() {
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        PaiementRequest mauvais = OneRequest("100.00", false);
+
+        assertThrows(BusinessRuleException.class, () -> service.payer(reservationId, mauvais));
+
+        verifyNoInteractions(paymentGateway, billetRepository);
+        verify(paiementRepository, never()).save(any());
+    }
+
+    // =====================================================================
+    // payer : succes
+    // =====================================================================
+    @Test
+    void payer_succes_confirmeLaReservation_etSauvegardeLePaiement() {
+        // ARRANGE
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
+
+        // ACT
+        PaiementResponse result = service.payer(reservationId, request);
+
+        // ASSERT
+        assertSame(response, result);
+        Paiement p = paiementSauvegarde();
+        assertEquals(StatutPaiement.SUCCESS, p.getStatut());
+        assertEquals(0, p.getMontant().compareTo(new BigDecimal("650.00")));
+        assertEquals(KEY, p.getIdempotencyKey());
+        assertTrue(p.getReference().startsWith("PAY-"));
+        assertNotNull(p.getDatePaiement());
+        assertSame(reservation, p.getReservation());
+        verify(reservation).setStatut(StatutReservation.CONFIRMED);
+        // la reference envoyee au gateway est celle du paiement
+        verify(paymentGateway).charge(eq(total), referenceCaptor.capture(), eq(false));
+        assertEquals(p.getReference(), referenceCaptor.getValue());
+    }
+
+    @Test
+    void payer_succes_genereUnBilletParPlace_toutesVALID_avecCodesUniques() {
+        // ARRANGE : lignes 2 + 1 = 3 billets
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
+
+        // ACT
+        service.payer(reservationId, request);
+
+        // ASSERT
+        verify(billetRepository).saveAll(billetsCaptor.capture());
+        List<Billet> billets = billetsCaptor.getValue();
+        assertEquals(3, billets.size());
+        Set<String> codes = new HashSet<>();
+        for (Billet b : billets) {
+            assertEquals(StatutBillet.VALID, b.getStatut());
+            assertTrue(b.getCode().startsWith("BIL-"));
+            assertNotNull(b.getDateEmission());
+            codes.add(b.getCode());
         }
+        assertEquals(3, codes.size()); // aucun code en double
+    }
 
-        @Test
-        void pasLeProprietaire_leveForbidden() {
-            Reservation reservation = reservationPayable();
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+    @Test
+    void payer_montantEgalAvecUneAutreEchelle_estAccepte() {
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        PaiementRequest r = OneRequest("650", false); // 650 vs 650.00
+        when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
 
-            assertThatThrownBy(() -> service.getByReservation(reservationId, UUID.randomUUID()))
-                    .isInstanceOf(ForbiddenOperationException.class);
+        service.payer(reservationId, r);
 
-            verify(paiementRepository, never()).findByReservationId(any());
-        }
+        assertEquals(StatutPaiement.SUCCESS, paiementSauvegarde().getStatut());
+    }
 
-        @Test
-        void aucunPaiement_leveResourceNotFound() {
-            Reservation reservation = reservationPayable();
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
+    @Test
+    void payer_simulerEchecNull_estTraiteCommeFalse() {
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        PaiementRequest r = OneRequest("650.00", null);
+        when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
 
-            assertThatThrownBy(() -> service.getByReservation(reservationId, clientId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+        service.payer(reservationId, r);
 
-        @Test
-        void nominal_retourneLePaiement() {
-            Reservation reservation = reservationPayable();
-            Paiement paiement = Paiement.builder().reservation(reservation).build();
-            when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
-            when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(paiement));
-            when(paiementMapper.toResponse(paiement)).thenReturn(response);
+        verify(paymentGateway).charge(eq(total), anyString(), eq(false));
+    }
 
-            assertThat(service.getByReservation(reservationId, clientId)).isSameAs(response);
-        }
+    @Test
+    void payer_referenceDejaExistante_enRegenereUneAutre() {
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        when(paiementRepository.existsByReference(anyString())).thenReturn(true, false);
+        when(paymentGateway.charge(eq(total), anyString(), anyBoolean())).thenReturn(chargeReussie);
+
+        service.payer(reservationId, request);
+
+        verify(paiementRepository, times(2)).existsByReference(anyString());
+    }
+
+    // =====================================================================
+    // payer : echec
+    // =====================================================================
+    @Test
+    void payer_echecSimule_paiementFailed_reservationEtBilletsInchanges() {
+        // ARRANGE
+        Reservation reservation = ReservationPayable();
+        stubReservation(reservation);
+        PaiementRequest r = OneRequest("650.00", true);
+        when(paymentGateway.charge(eq(total), anyString(), eq(true))).thenReturn(chargeEchouee);
+
+        // ACT
+        PaiementResponse result = service.payer(reservationId, r);
+
+        // ASSERT
+        assertSame(response, result);
+        assertEquals(StatutPaiement.FAILED, paiementSauvegarde().getStatut());
+        verify(reservation, never()).setStatut(any()); // reste PENDING_PAYMENT
+        verify(billetRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void payer_reessaiApresUnEchec_reutiliseLePaiementExistant() {
+        // ARRANGE : un paiement FAILED existe deja pour cette reservation
+        Reservation reservation = ReservationPayable();
+        Paiement echoue = Paiement.builder().reservation(reservation).statut(StatutPaiement.FAILED).build();
+        stubReservation(reservation);
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(echoue));
+        when(paymentGateway.charge(eq(total), anyString(), eq(false))).thenReturn(chargeReussie);
+
+        // ACT
+        service.payer(reservationId, request);
+
+        // ASSERT : meme objet, maintenant SUCCESS
+        Paiement sauvegarde = paiementSauvegarde();
+        assertSame(echoue, sauvegarde);
+        assertEquals(StatutPaiement.SUCCESS, sauvegarde.getStatut());
+        verify(reservation).setStatut(StatutReservation.CONFIRMED);
+    }
+
+    // =====================================================================
+    // getByReservation
+    // =====================================================================
+    @Test
+    void getByReservation_reservationIntrouvable_ResourceNotFound() {
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getByReservation(reservationId, clientId));
+    }
+
+    @Test
+    void getByReservation_pasLeProprietaire_Forbidden() {
+        Reservation reservation = ReservationPayable();
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+
+        assertThrows(ForbiddenOperationException.class,
+                () -> service.getByReservation(reservationId, UUID.randomUUID()));
+
+        verify(paiementRepository, never()).findByReservationId(any());
+    }
+
+    @Test
+    void getByReservation_aucunPaiement_ResourceNotFound() {
+        Reservation reservation = ReservationPayable();
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.getByReservation(reservationId, clientId));
+    }
+
+    @Test
+    void getByReservation_nominal_retourneLePaiement() {
+        Reservation reservation = ReservationPayable();
+        Paiement paiement = Paiement.builder().reservation(reservation).build();
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(paiementRepository.findByReservationId(reservationId)).thenReturn(Optional.of(paiement));
+        when(paiementMapper.toResponse(paiement)).thenReturn(response);
+
+        assertSame(response, service.getByReservation(reservationId, clientId));
+    }
+
+    // =====================================================================
+    // methode utilitaire (evite de repeter le meme code dans plusieurs tests)
+    // =====================================================================
+    private void payerStatutNonPayable(StatutReservation statut) {
+        Reservation reservation = OneReservation(statut, OneEvent(StatusEvenment.PUBLISHED),
+                LocalDateTime.now().plusMinutes(10), List.of());
+        stubReservation(reservation);
+
+        BusinessRuleException ex = assertThrows(BusinessRuleException.class,
+                () -> service.payer(reservationId, request));
+
+        assertTrue(ex.getMessage().contains(statut.name())); // le message cite le statut
+        verifyNoInteractions(paymentGateway);
     }
 }

@@ -16,37 +16,36 @@ import com.eventPro.eventPro.model.enums.StatutBillet;
 import com.eventPro.eventPro.repository.AgentControleRepository;
 import com.eventPro.eventPro.repository.BilletRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // Mockito cree les @Mock avant chaque test
+@MockitoSettings(strictness = Strictness.LENIENT) // pas d'erreur si un stub n'est pas utilise dans un test
 class CheckInServiceTest {
 
-    @Mock private BilletRepository billetRepository;
-    @Mock private AgentControleRepository agentControleRepository;
-    @Mock private TicketMapper ticketMapper;
+    @Mock
+    private BilletRepository billetRepository;
+    @Mock
+    private AgentControleRepository agentControleRepository;
+    @Mock
+    private TicketMapper ticketMapper;
 
-    @InjectMocks private CheckInService service;
+    @InjectMocks
+    private CheckInService service;
 
     private static final String CODE = "BIL-ABC123";
 
@@ -57,202 +56,207 @@ class CheckInServiceTest {
 
     @BeforeEach
     void setUp() {
+        // le mapper renvoie toujours le meme "ticket" pour n'importe quel billet
         ticket = mock(TicketResponse.class);
-        lenient().when(ticketMapper.toResponse(any(Billet.class))).thenReturn(ticket);
+        when(ticketMapper.toResponse(any(Billet.class))).thenReturn(ticket);
     }
 
-    /** Toujours dans une variable locale, jamais dans when(...). */
-    private Billet billet(StatutBillet statut, StatusEvenment statutEvent) {
+    // ---------- petits helpers (comme OneUser() avant) ----------
+    // billet avec un statut, rattache a un event qui a le statut voulu
+    private Billet OneBillet(StatutBillet statut, StatusEvenment statutEvent) {
         Event event = Event.builder().statut(statutEvent).build();
         Reservation reservation = mock(Reservation.class);
-        lenient().when(reservation.getEvent()).thenReturn(event);
+        when(reservation.getEvent()).thenReturn(event);
         LigneReservation ligne = mock(LigneReservation.class);
-        lenient().when(ligne.getReservation()).thenReturn(reservation);
+        when(ligne.getReservation()).thenReturn(reservation);
         Billet b = mock(Billet.class);
-        lenient().when(b.getLigneReservation()).thenReturn(ligne);
-        lenient().when(b.getStatut()).thenReturn(statut);
-        lenient().when(b.getDateControle()).thenReturn(dateControle);
+        when(b.getLigneReservation()).thenReturn(ligne);
+        when(b.getStatut()).thenReturn(statut);
+        when(b.getDateControle()).thenReturn(dateControle);
         return b;
     }
 
-    // =====================================================================
-    @Nested
-    @DisplayName("verifier")
-    class Verifier {
-
-        @Test
-        void agentIntrouvable_leveResourceNotFound_sansChercherLeBillet() {
-            when(agentControleRepository.existsById(agentId)).thenReturn(false);
-
-            assertThatThrownBy(() -> service.verifier(CODE, agentId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(agentId.toString());
-
-            verifyNoInteractions(billetRepository);
-        }
-
-        @Test
-        void codeNormalise_espacesEtMinuscules() {
-            Billet billet = billet(StatutBillet.VALID, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode("BIL-ABC123")).thenReturn(Optional.of(billet));
-
-            VerificationResponse result = service.verifier("  bil-abc123 ", agentId);
-
-            assertThat(result.accesAutorise()).isTrue();
-            verify(billetRepository).findByCode("BIL-ABC123");
-        }
-
-        @Test
-        void billetIntrouvable_leveResourceNotFound() {
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.verifier(CODE, agentId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(CODE);
-        }
-
-        @Test
-        void billetValide_accesAutorise_etNeComposteRien() {
-            Billet billet = billet(StatutBillet.VALID, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-
-            VerificationResponse result = service.verifier(CODE, agentId);
-
-            assertThat(result.accesAutorise()).isTrue();
-            assertThat(result.message()).isEqualTo("Billet valide");
-            assertThat(result.billet()).isSameAs(ticket);
-            verify(billetRepository, never()).composter(any(), any());
-        }
-
-        @Test
-        void billetDejaUtilise_accesRefuse() {
-            Billet billet = billet(StatutBillet.USED, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-
-            VerificationResponse result = service.verifier(CODE, agentId);
-
-            assertThat(result.accesAutorise()).isFalse();
-            assertThat(result.message()).contains("déja utilisé");
-        }
-
-        @Test
-        void billetAnnule_accesRefuse() {
-            Billet billet = billet(StatutBillet.CANCELLED, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-
-            VerificationResponse result = service.verifier(CODE, agentId);
-
-            assertThat(result.accesAutorise()).isFalse();
-            assertThat(result.message()).contains("annulé");
-        }
-
-        @Test
-        void evenementAnnule_accesRefuse_memePourUnBilletValide() {
-            Billet billet = billet(StatutBillet.VALID, StatusEvenment.CANCELLED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-
-            VerificationResponse result = service.verifier(CODE, agentId);
-
-            assertThat(result.accesAutorise()).isFalse();
-            assertThat(result.message()).contains("événement a été annulé");
-        }
+    private CheckInRequest OneRequest() {
+        CheckInRequest r = mock(CheckInRequest.class);
+        when(r.agentId()).thenReturn(agentId);
+        when(r.code()).thenReturn(CODE);
+        return r;
     }
 
     // =====================================================================
-    @Nested
-    @DisplayName("composter")
-    class Composter {
+    // verifier
+    // =====================================================================
+    @Test
+    void verifier_agentIntrouvable_ResourceNotFound_sansChercherLeBillet() {
+        when(agentControleRepository.existsById(agentId)).thenReturn(false);
 
-        private CheckInRequest request() {
-            CheckInRequest r = mock(CheckInRequest.class);
-            lenient().when(r.agentId()).thenReturn(agentId);
-            lenient().when(r.code()).thenReturn(CODE);
-            return r;
-        }
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.verifier(CODE, agentId));
 
-        @Test
-        void agentIntrouvable_leveResourceNotFound() {
-            CheckInRequest request = request();
-            when(agentControleRepository.existsById(agentId)).thenReturn(false);
+        assertTrue(ex.getMessage().contains(agentId.toString()));
+        verifyNoInteractions(billetRepository);
+    }
 
-            assertThatThrownBy(() -> service.composter(request))
-                    .isInstanceOf(ResourceNotFoundException.class);
+    @Test
+    void verifier_codeNormalise_espacesEtMinuscules() {
+        // ARRANGE
+        Billet billet = OneBillet(StatutBillet.VALID, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode("BIL-ABC123")).thenReturn(Optional.of(billet));
 
-            verifyNoInteractions(billetRepository);
-        }
+        // ACT : le scanner envoie "  bil-abc123 "
+        VerificationResponse result = service.verifier("  bil-abc123 ", agentId);
 
-        @Test
-        void billetIntrouvable_leveResourceNotFound_sansComposter() {
-            CheckInRequest request = request();
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.empty());
+        // ASSERT
+        assertTrue(result.accesAutorise());
+        verify(billetRepository).findByCode("BIL-ABC123");
+    }
 
-            assertThatThrownBy(() -> service.composter(request))
-                    .isInstanceOf(ResourceNotFoundException.class);
+    @Test
+    void verifier_billetIntrouvable_ResourceNotFound() {
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.empty());
 
-            verify(billetRepository, never()).composter(any(), any());
-        }
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.verifier(CODE, agentId));
 
-        @Test
-        void evenementAnnule_leveTicketInvalid_sansComposter() {
-            CheckInRequest request = request();
-            Billet billet = billet(StatutBillet.VALID, StatusEvenment.CANCELLED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+        assertTrue(ex.getMessage().contains(CODE));
+    }
 
-            assertThatThrownBy(() -> service.composter(request))
-                    .isInstanceOf(TicketInvalidException.class)
-                    .hasMessageContaining("annulé");
+    @Test
+    void verifier_billetValide_accesAutorise_etNeComposteRien() {
+        // ARRANGE
+        Billet billet = OneBillet(StatutBillet.VALID, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
 
-            verify(billetRepository, never()).composter(any(), any());
-        }
+        // ACT
+        VerificationResponse result = service.verifier(CODE, agentId);
 
-        @Test
-        void nominal_composteLeBillet_etAutoriseLAcces() {
-            CheckInRequest request = request();
-            Billet billet = billet(StatutBillet.USED, StatusEvenment.PUBLISHED);   // etat reel apres l'UPDATE
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-            when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(1);
+        // ASSERT
+        assertTrue(result.accesAutorise());
+        assertEquals("Billet valide", result.message());
+        assertSame(ticket, result.billet());
+        verify(billetRepository, never()).composter(any(), any()); // verifier ne modifie rien
+    }
 
-            VerificationResponse result = service.composter(request);
+    @Test
+    void verifier_billetDejaUtilise_accesRefuse() {
+        Billet billet = OneBillet(StatutBillet.USED, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
 
-            assertThat(result.accesAutorise()).isTrue();
-            assertThat(result.message()).contains("composté");
-            assertThat(result.billet()).isSameAs(ticket);
-            verify(billetRepository).composter(eq(CODE), any(LocalDateTime.class));
-        }
+        VerificationResponse result = service.verifier(CODE, agentId);
 
-        @Test
-        void billetDejaUtilise_leveTicketAlreadyUsed() {
-            CheckInRequest request = request();
-            Billet billet = billet(StatutBillet.USED, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-            when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(0);
+        assertFalse(result.accesAutorise());
+        assertTrue(result.message().contains("déja utilisé"));
+    }
 
-            assertThatThrownBy(() -> service.composter(request))
-                    .isInstanceOf(TicketAlreadyUsedException.class)
-                    .hasMessageContaining("déja utilisé");
-        }
+    @Test
+    void verifier_billetAnnule_accesRefuse() {
+        Billet billet = OneBillet(StatutBillet.CANCELLED, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
 
-        @Test
-        void billetAnnule_leveTicketInvalid() {
-            CheckInRequest request = request();
-            Billet billet = billet(StatutBillet.CANCELLED, StatusEvenment.PUBLISHED);
-            when(agentControleRepository.existsById(agentId)).thenReturn(true);
-            when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
-            when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(0);
+        VerificationResponse result = service.verifier(CODE, agentId);
 
-            assertThatThrownBy(() -> service.composter(request))
-                    .isInstanceOf(TicketInvalidException.class)
-                    .hasMessageContaining("annulé");
-        }
+        assertFalse(result.accesAutorise());
+        assertTrue(result.message().contains("annulé"));
+    }
+
+    @Test
+    void verifier_evenementAnnule_accesRefuse_memePourUnBilletValide() {
+        Billet billet = OneBillet(StatutBillet.VALID, StatusEvenment.CANCELLED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+
+        VerificationResponse result = service.verifier(CODE, agentId);
+
+        assertFalse(result.accesAutorise());
+        assertTrue(result.message().contains("événement a été annulé"));
+    }
+
+    // =====================================================================
+    // composter
+    // =====================================================================
+    @Test
+    void composter_agentIntrouvable_ResourceNotFound() {
+        CheckInRequest request = OneRequest();
+        when(agentControleRepository.existsById(agentId)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.composter(request));
+
+        verifyNoInteractions(billetRepository);
+    }
+
+    @Test
+    void composter_billetIntrouvable_ResourceNotFound_sansComposter() {
+        CheckInRequest request = OneRequest();
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.composter(request));
+
+        verify(billetRepository, never()).composter(any(), any());
+    }
+
+    @Test
+    void composter_evenementAnnule_TicketInvalid_sansComposter() {
+        CheckInRequest request = OneRequest();
+        Billet billet = OneBillet(StatutBillet.VALID, StatusEvenment.CANCELLED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+
+        TicketInvalidException ex = assertThrows(TicketInvalidException.class, () -> service.composter(request));
+
+        assertTrue(ex.getMessage().contains("annulé"));
+        verify(billetRepository, never()).composter(any(), any()); // refuse avant l'UPDATE
+    }
+
+    @Test
+    void composter_nominal_composteLeBillet_etAutoriseLAcces() {
+        // ARRANGE : l'UPDATE retourne 1 ligne ; le billet relu est USED
+        CheckInRequest request = OneRequest();
+        Billet billet = OneBillet(StatutBillet.USED, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+        when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(1);
+
+        // ACT
+        VerificationResponse result = service.composter(request);
+
+        // ASSERT
+        assertTrue(result.accesAutorise());
+        assertTrue(result.message().contains("composté"));
+        assertSame(ticket, result.billet());
+        verify(billetRepository).composter(eq(CODE), any(LocalDateTime.class));
+    }
+
+    @Test
+    void composter_billetDejaUtilise_TicketAlreadyUsed() {
+        // l'UPDATE retourne 0 et le billet est deja USED
+        CheckInRequest request = OneRequest();
+        Billet billet = OneBillet(StatutBillet.USED, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+        when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(0);
+
+        TicketAlreadyUsedException ex = assertThrows(TicketAlreadyUsedException.class, () -> service.composter(request));
+
+        assertTrue(ex.getMessage().contains("déja utilisé"));
+    }
+
+    @Test
+    void composter_billetAnnule_TicketInvalid() {
+        // l'UPDATE retourne 0 et le billet est CANCELLED
+        CheckInRequest request = OneRequest();
+        Billet billet = OneBillet(StatutBillet.CANCELLED, StatusEvenment.PUBLISHED);
+        when(agentControleRepository.existsById(agentId)).thenReturn(true);
+        when(billetRepository.findByCode(CODE)).thenReturn(Optional.of(billet));
+        when(billetRepository.composter(eq(CODE), any(LocalDateTime.class))).thenReturn(0);
+
+        TicketInvalidException ex = assertThrows(TicketInvalidException.class, () -> service.composter(request));
+
+        assertTrue(ex.getMessage().contains("annulé"));
     }
 }
