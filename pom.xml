@@ -36,7 +36,7 @@
 		<sonar.projectName>EventPro</sonar.projectName>
 		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 		<sonar.coverage.exclusions>
-			**/ApiApplication.java,**/ServletInitializer.java,**/dto/**,**/mapper/**,**/Config/**
+			**/EventProApplication.java,**/ServletInitializer.java,**/dto/**,**/mapper/**
 		</sonar.coverage.exclusions>
 
 	</properties>
@@ -192,10 +192,9 @@
 				<version>0.8.13</version>
 				<configuration>
 					<excludes>
-						<exclude>com/eventPro/eventPro/ApiApplication.class</exclude>
+						<exclude>com/eventPro/eventPro/EventProApplication.class</exclude>
 						<exclude>com/eventPro/eventPro/ServletInitializer.class</exclude>
 						<exclude>com/eventPro/eventPro/dto/**</exclude>
-						<exclude>com/eventPro/eventPro/Config/**</exclude>
 						<exclude>com/eventPro/eventPro/mapper/*Impl.class</exclude>
 					</excludes>
 				</configuration>
