@@ -30,6 +30,15 @@
 	<properties>
 		<java.version>21</java.version>
 		<mapstruct.version>1.6.3</mapstruct.version>
+
+		<!-- SonarQube -->
+		<sonar.projectKey>eventpro</sonar.projectKey>
+		<sonar.projectName>EventPro</sonar.projectName>
+		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.coverage.exclusions>
+			**/ApiApplication.java,**/ServletInitializer.java,**/dto/**,**/mapper/**,**/Config/**
+		</sonar.coverage.exclusions>
+
 	</properties>
 	<dependencies>
 		<dependency>

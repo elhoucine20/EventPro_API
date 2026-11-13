@@ -41,6 +41,24 @@ pipeline {
         }
     }
 
+    // SonarQuebe
+    stage('Analyse SonarQube') {
+        steps {
+            withSonarQubeEnv('sonarqube') {
+                sh './mvnw -B -ntp org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
+            }
+        }
+    }
+
+    stage('Quality Gate') {
+        steps {
+            timeout(time: 5, unit: 'MINUTES') {
+                waitForQualityGate abortPipeline: true
+            }
+        }
+    }
+
+
     post {
         success {
            echo 'Pipeline OK'

@@ -3,7 +3,6 @@ package com.eventPro.eventPro.service;
 import com.eventPro.eventPro.dto.ligneReservation.LigneReservationRequest;
 import com.eventPro.eventPro.dto.reservation.ReservationRequest;
 import com.eventPro.eventPro.dto.reservation.ReservationResponse;
-import com.eventPro.eventPro.exception.AucuneReservationTrouveeException;
 import com.eventPro.eventPro.exception.BusinessRuleException;
 import com.eventPro.eventPro.exception.ForbiddenOperationException;
 import com.eventPro.eventPro.exception.ResourceNotFoundException;
@@ -261,20 +260,6 @@ public class ReservationService {
             reference = "REF-"+UUID.randomUUID().toString().replace("-","").substring(0,10).toUpperCase();
         }while (reservationRepository.existsByReference(reference));
         return reference;
-    }
-
-
-
-    // MISE EN SITUATION
-    public List<ReservationResponse> listReservationByStatuConfirmerAndClient(String email,Long quantite,String categorieName){
-
-        CategorieBillet categorieBillet = categorieBilletRepository.findByNom(categorieName);
-       List<Reservation> reservations = reservationRepository.findByStatutAndEmailAndCatgorieBillet(email,StatutReservation.CONFIRMED,categorieBillet,quantite);
-
-       if (reservations.isEmpty())
-           throw new AucuneReservationTrouveeException("aucun reservation found!!");
-
-       return reservations.stream().map(reservationMapper::toResponse).toList();
     }
 
 }
