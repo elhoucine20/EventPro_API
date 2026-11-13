@@ -38,4 +38,8 @@ public interface CategorieBilletRepository extends JpaRepository<CategorieBillet
     List<CleQuantite> sumQuantiteTotaleParEvent(@Param("eventIds") Collection<UUID> eventIds);
 
 
+
+
+    // MISE EN SITUATION
+    CategorieBillet findByNom(String nom);
 }

@@ -2,6 +2,7 @@ package com.eventPro.eventPro.controller;
 
 import com.eventPro.eventPro.dto.reservation.ReservationRequest;
 import com.eventPro.eventPro.dto.reservation.ReservationResponse;
+import com.eventPro.eventPro.model.enums.StatutReservation;
 import com.eventPro.eventPro.service.ReservationService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -50,6 +52,16 @@ public class ReservationController {
     @Operation(summary = "annulation de reservation")
     public ReservationResponse annuler(@PathVariable UUID id,@RequestParam UUID clientId){
         return reservationService.annuler(id,clientId);
+    }
+
+
+    // MISE EN SITUATION
+    @RequestMapping("/api/v1/reservations/recherche")
+    public List<ReservationResponse> searchByClientAndStatuConfirmetAndCategorie(@RequestParam String categorieName,
+                                                                                 @RequestParam String email,
+                                                                                 @RequestParam Long quantite){
+
+        return reservationService.listReservationByStatuConfirmerAndClient(email,quantite,categorieName);
     }
 
 }

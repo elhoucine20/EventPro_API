@@ -1,5 +1,6 @@
 package com.eventPro.eventPro.repository;
 
+import com.eventPro.eventPro.model.CategorieBillet;
 import com.eventPro.eventPro.model.Reservation;
 import com.eventPro.eventPro.model.enums.StatutReservation;
 import com.eventPro.eventPro.repository.projection.CleQuantiteMontant;
@@ -67,5 +68,18 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID>,
         group by r.event.id
         """)
     List<CleQuantiteMontant> statsVentesParEvent(@Param("eventIds") Collection<UUID> eventIds);
+
+
+
+    // LISE EN SITUATION
+    @Query("select r from Reservation r " +
+            "join LignReservation lr on lr.reservation_id in r.lignes and lr.quantite >= :quantityMin " +
+            "JOIN Client c on c.email = :email " +
+            "Left JOIN CategorieBillet cb on lr.categorieBillet = :categorie " +
+            "where r.statut = :statut " +
+            "group by c" )
+    List<Reservation> findByStatutAndEmailAndCatgorieBillet(
+            @Param("email") String email, @Param("statut") StatutReservation statut, @Param("categorie") CategorieBillet categorie
+    ,@Param("quantityMin") Long quantityMin);
 
 }
