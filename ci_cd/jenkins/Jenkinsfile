@@ -99,7 +99,7 @@ pipeline {
 
         stage('Smoke test') {
             steps {
-                sh 'bash ci/smoke-test.sh "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"'
+                sh 'bash ci_cd/smoke-test.sh "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"'
             }
         }
 
