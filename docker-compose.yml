@@ -46,8 +46,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-eventpro}
-      DB_USERNAME: ${POSTGRES_USER:-eventpro}
-      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}"
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-eventpro}
+      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}"
       JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
@@ -145,5 +145,4 @@ volumes:
 
   # dans la section volumes :
   registry_data:
-
 

@@ -24,11 +24,18 @@ done
 docker run -d --name "$NET-app" --network "$NET" \
   -e SPRING_PROFILES_ACTIVE=prod \
   -e DB_URL="jdbc:postgresql://$NET-db:5432/eventpro" \
-  -e DB_USERNAME=eventpro -e DB_PASSWORD=smoke \
+  -e SPRING_DATASOURCE_USERNAME=eventpro \
+  -e SPRING_DATASOURCE_PASSWORD=smoke \
   -e ADMIN_NAME=smoke -e ADMIN_EMAIL=smoke@test.local -e ADMIN_PASSWORD=smoke-password-1 \
   "$IMAGE"
 
 for i in $(seq 1 40); do
+  if ! docker inspect --format '{{.State.Running}}' "$NET-app" 2>/dev/null | grep -q true; then
+    echo "Smoke test ÉCHEC : l'application s'est arrêtée au démarrage. Dernières lignes des logs :"
+    docker logs --tail 50 "$NET-app"
+    exit 1
+  fi
+
   if docker exec "$NET-app" wget -q -O- http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
     echo "Smoke test OK : l'application répond UP"
     exit 0
