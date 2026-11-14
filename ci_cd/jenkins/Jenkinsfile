@@ -1,4 +1,27 @@
 
+// notification par email using brevo
+def notifier(String statut) {
+    try {
+        emailext(
+            from: env.MAIL_FROM,
+            to: env.NOTIFY_EMAIL,
+            subject: "[EventPro] Build #${env.BUILD_NUMBER} : ${statut}",
+            mimeType: 'text/html',
+            body: """
+                <h3>EventPro - build #${env.BUILD_NUMBER} : ${statut}</h3>
+                <ul>
+                  <li>Version : ${env.IMAGE_TAG ?: 'image non construite'}</li>
+                  <li>Commit : ${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'inconnu'}</li>
+                  <li>Détails : <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
+                </ul>
+            """
+        )
+    } catch (err) {
+        echo "Notification impossible : ${err.message}"
+    }
+}
+
+
 // pepline est une ensemble des instrections pour jenkins, que gerer les étapes apres le changement de code a github
 pipeline {
     agent any  // any agent ,selon mon machine
@@ -122,7 +145,7 @@ pipeline {
 
     }
 
-    post {
+  /*  post {
         // dockerlisation
         always { sh 'docker image prune -f || true' }
 
@@ -133,4 +156,13 @@ pipeline {
            echo 'Pipeline en échec : consulter les logs ci-dessus'
         }
     }
+    */
+
+    post {
+            always   { sh 'docker image prune -f || true' }
+            success  { script { notifier('RÉUSSI') } }
+            failure  { script { notifier('ÉCHEC') } }
+            unstable { script { notifier('INSTABLE') } }
+        }
+
 }
