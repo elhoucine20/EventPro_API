@@ -3,6 +3,12 @@
 pipeline {
     agent any  // any agent ,selon mon machine
 
+    //
+    environment {
+        IMAGE_NAME = 'eventpro-api'
+        REGISTRY   = 'localhost:5000'
+    }
+
     options { // les champs que pas necessires mais bon pratique
         timestamps() // time pour voir warning ou error derictement dans jenkins
         timeout(time: 20, unit: 'MINUTES') //  ne deppass pas 20 a build
@@ -57,9 +63,69 @@ pipeline {
                 }
             }
         }
+
+        // dockerlisation 4 stages
+        stage('Packaging') {
+            steps {
+                sh './mvnw -B -ntp -DskipTests package'
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                }
+            }
+        }
+
+        stage('Image Docker') {
+            steps {
+                script {
+                    env.APP_VERSION = sh(
+                        script: './mvnw -q -B help:evaluate -Dexpression=project.version -DforceStdout',
+                        returnStdout: true).trim()
+                    env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = "${env.APP_VERSION}-${env.BUILD_NUMBER}"
+                    currentBuild.description = "${env.IMAGE_TAG} (${env.GIT_SHORT})"
+                }
+                sh '''
+                    docker build \
+                      --label org.opencontainers.image.version="$APP_VERSION" \
+                      --label org.opencontainers.image.revision="$GIT_SHORT" \
+                      --label ci.build.number="$BUILD_NUMBER" \
+                      -t "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG" \
+                      -t "$REGISTRY/$IMAGE_NAME:$GIT_SHORT" .
+                '''
+            }
+        }
+
+        stage('Smoke test') {
+            steps {
+                sh 'bash ci/smoke-test.sh "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"'
+            }
+        }
+
+        stage('Publication') {
+            when {
+                expression { env.GIT_BRANCH in ['origin/main', 'origin/master'] }
+            }
+            steps {
+                sh '''
+                    docker tag "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG" "$REGISTRY/$IMAGE_NAME:latest"
+                    docker push "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+                    docker push "$REGISTRY/$IMAGE_NAME:$GIT_SHORT"
+                    docker push "$REGISTRY/$IMAGE_NAME:latest"
+                '''
+            }
+        }
+
+
+
+
     }
 
     post {
+        // dockerlisation
+        always { sh 'docker image prune -f || true' }
+
         success {
            echo 'Pipeline OK'
         }

@@ -2,6 +2,16 @@ name: eventpro
 
 services:
 
+  # service de registery relation avec dickerlisation
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"          # visible depuis ta machine seulement
+    volumes:
+      - registry_data:/var/lib/registry
+
+
   db:
     image: postgres:17-alpine            # le cahier des charges demande PostgreSQL 15+
     restart: unless-stopped
@@ -132,3 +142,8 @@ volumes:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
+
+  # dans la section volumes :
+  registry_data:
+
+
